@@ -1,0 +1,32 @@
+{
+  "name": "@opencall/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/**/*.test.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/websocket": "^10.0.1",
+    "@opencall/auth": "*",
+    "@opencall/db": "*",
+    "@opencall/eventbus": "*",
+    "@opencall/livekit-tokens": "*",
+    "@opencall/routing": "*",
+    "@opencall/types": "*",
+    "fastify": "^4.28.1",
+    "livekit-server-sdk": "^2.6.1",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.5.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.5.4"
+  }
+}
