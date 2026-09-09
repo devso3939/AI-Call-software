@@ -118,8 +118,11 @@ class GatewayService : Service() {
         var iteration = 0L
 
         while (running.get()) {
-            val devId = DeviceStore.deviceId(this) ?: run { sleep(5000); continue }
-            val secret = DeviceStore.secret(this) ?: run { sleep(5000); continue }
+            val devId = DeviceStore.deviceId(this)
+            val secret = DeviceStore.secret(this)
+            if (devId == null || secret == null) {
+                sleep(5000); continue
+            }
 
             try {
                 // 1) heartbeat every iteration (marks online; server times out after 90 s)

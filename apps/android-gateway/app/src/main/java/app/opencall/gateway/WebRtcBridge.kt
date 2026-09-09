@@ -158,13 +158,14 @@ class WebRtcBridge(
             // INBOUND bridge: we're the offerer — build+post the offer immediately.
             // Browser answers via get_call_events → handleSignal('answer').
             pc!!.createOffer(object : SdpObserverLog("createOffer") {
-                override fun onCreateSuccess(desc: SessionDescription) {
+                override fun onCreateSuccess(desc: SessionDescription?) {
                     val conn = pc ?: return
-                    conn.setLocalDescription(SdpObserverLog("setLocal"), desc)
+                    val d = desc ?: return
+                    conn.setLocalDescription(SdpObserverLog("setLocal"), d)
                     postSignal("offer", JSONObject()
                         .put("type", "offer")
-                        .put("sdp", desc.description))
-                    Log.i(TAG, "offer posted (${desc.description.length} B SDP)")
+                        .put("sdp", d.description))
+                    Log.i(TAG, "offer posted (${d.description.length} B SDP)")
                 }
                 override fun onCreateFailure(p0: String?) { Log.e(TAG, "createOffer failed: $p0") }
             }, MediaConstraints())
@@ -226,13 +227,14 @@ class WebRtcBridge(
 
             val answerConstraints = MediaConstraints()
             conn.createAnswer(object : SdpObserverLog("createAnswer") {
-                override fun onCreateSuccess(desc: SessionDescription) {
-                    conn.setLocalDescription(SdpObserverLog("setLocal"), desc)
+                override fun onCreateSuccess(desc: SessionDescription?) {
+                    val d = desc ?: return
+                    conn.setLocalDescription(SdpObserverLog("setLocal"), d)
                     val out = JSONObject()
                         .put("type", "answer")
-                        .put("sdp", desc.description)
+                        .put("sdp", d.description)
                     postSignal("answer", out)
-                    Log.i(TAG, "answer posted (${desc.description.length} bytes SDP)")
+                    Log.i(TAG, "answer posted (${d.description.length} bytes SDP)")
                 }
                 override fun onSetSuccess() {}
                 override fun onCreateFailure(p0: String?) { Log.e(TAG, "createAnswer: $p0") }
