@@ -1208,7 +1208,10 @@ function connectExample(kind, keyRef) {
 function tabConnect() {
   const active = apiKeys.filter(k => !k.revoked), revoked = apiKeys.filter(k => k.revoked);
   const sel = docKeySel && apiKeys.find(k => k.id === docKeySel && !k.revoked) ? docKeySel : (active[0] ? active[0].id : null);
-  const selRef = freshApiKey ? freshApiKey.key : (sel ? (apiKeys.find(k => k.id === sel).prefix + '…') : null);
+  // docs prefill only while the fresh plaintext key is on screen — after
+  // "Done" we fall back to an honest <YOUR_API_KEY> placeholder (the
+  // truncated prefix would fail if copy-pasted)
+  const selRef = freshApiKey ? freshApiKey.key : null;
   return `
   <div class="card">
     <h2>Connect other apps to your number</h2>
@@ -1250,13 +1253,14 @@ function tabConnect() {
   <div class="card" style="margin-top:14px">
     <div class="row between">
       <h2>Use it from any app</h2>
-      ${active.length ? `<select class="input" style="width:auto;padding:6px 10px;font-size:.8rem" onchange="setActiveKeyForDocs(this.value)">
+      ${active.length && freshApiKey ? `<select class="input" style="width:auto;padding:6px 10px;font-size:.8rem" onchange="setActiveKeyForDocs(this.value)">
         ${active.map(k => `<option value="${k.id}" ${k.id === sel ? 'selected' : ''}>${esc(k.name)} (${esc(k.prefix)}…)</option>`).join('')}
       </select>` : ''}
     </div>
     ${active.length === 0
       ? '<p class="muted">Create an API key above — copy-paste examples with your key filled in will appear here.</p>'
       : connectDocs(selRef)}
+    ${active.length && !freshApiKey ? '<p class="tiny" style="margin:10px 0 0">💡 Keys are shown only once at creation. To get copy-paste examples with a real key, mint a fresh one above.</p>' : ''}
   </div>
   ${tabsHtml()}`;
 }
