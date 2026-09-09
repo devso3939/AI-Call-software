@@ -1,0 +1,14 @@
+# Core (always required)
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-dotenv>=1.0,<2
+numpy>=1.26,<3
+
+# LiveKit agent participation (required for real room join; pulls livekit-api + protobuf)
+livekit>=0.20,<2
+
+# ---- Local AI models (install explicitly when ready; heavy downloads) ----
+# faster-whisper>=1.0        # STT (CTranslate2 backend)
+# silero-vad via torch:
+# torch>=2.2 ; torchaudio>=2.2
+# kokoro>=0.7                # TTS (Apache-2.0) — needs espeak-ng on PATH

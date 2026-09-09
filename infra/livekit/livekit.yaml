@@ -1,0 +1,15 @@
+# LiveKit server config — development defaults.
+# Dev mode (`livekit-server --dev`) works with no config file; this file documents
+# the production shape we grow into (TLS + TURN) without enabling premature complexity (§9/§11).
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  # production: enable these with real certs
+  # use_external_ip: true
+keys:
+  devkey: opencalldevsecret_0123456789abcdef0123456789abcdef
+turn:
+  enabled: false
+  # domain: turn.example.com
+  # tls_port: 5349
