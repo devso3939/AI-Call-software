@@ -56,8 +56,9 @@ jobs:
           APK=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
           echo "Verifying: $APK"
           $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose --print-certs "$APK" | tee sig.txt
-          grep -q "Verified using v2 scheme: true" sig.txt || (echo "v2 scheme missing" && exit 1)
-          grep -q "Verified using v3 scheme: true" sig.txt || (echo "v3 scheme missing" && exit 1)
+          # apksigner prints: "Verified using v2 scheme (APK Signature Scheme v2): true"
+          grep -Eq "Verified using v2 scheme.*: true" sig.txt || (echo "v2 scheme missing" && exit 1)
+          grep -Eq "Verified using v3 scheme.*: true" sig.txt || (echo "v3 scheme missing" && exit 1)
           echo "Signature OK: v2 + v3 cover all supported devices (Android 8.0+)"
 
       # Give the APK a stable filename so the download URL never changes:
