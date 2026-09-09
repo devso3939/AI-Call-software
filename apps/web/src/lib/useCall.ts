@@ -105,6 +105,9 @@ export function useCall(api: UseCallApi) {
       clearInterval(statsTimer);
       throw err;
     }
+    // Debug/observability hook (§84): expose the live room for E2E media verification.
+    // Harmless in production (read-only reference, no behavior change).
+    (window as unknown as { __opencallRoom?: Room }).__opencallRoom = room;
     return () => clearInterval(statsTimer);
   }, [patch]);
 
