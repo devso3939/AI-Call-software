@@ -11,8 +11,9 @@ android {
         applicationId = "app.opencall.gateway"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
+        resourceConfigurations += listOf("en")
     }
 
     // Consistent release signing: every build uses the SAME committed keystore,
@@ -37,6 +38,15 @@ android {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
+        }
+    }
+    // Sign with every scheme modern Android checks (v1 for older OEM installers,
+    // v2 since Android 7, v3 for key rotation) — maximum Play Protect goodwill.
+    signingConfigs {
+        getByName("release") {
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
     buildFeatures { buildConfig = true }

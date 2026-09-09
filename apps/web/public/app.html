@@ -197,10 +197,24 @@
   .keybox{border:1px solid var(--mint600);border-radius:12px;background:rgba(16,185,129,.08);padding:12px;margin-top:10px;box-shadow:0 0 24px rgba(16,185,129,.12) inset}
   @media (prefers-reduced-motion:no-preference){.btn{transition:background .15s,border-color .15s,transform .15s,box-shadow .15s}}
 </style>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#070b14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OpenCall">
 </head>
 <body>
 <main id="root"></main>
 <audio id="remoteAudio" autoplay></audio>
+<button id="pwa-install" class="btn btn-ghost" style="display:none;position:fixed;bottom:18px;right:18px;z-index:120;
+  border-radius:14px;padding:11px 16px;font-weight:700;background:rgba(20,27,41,.92);border-color:rgba(52,211,153,.4);
+  box-shadow:0 10px 34px rgba(0,0,0,.5);backdrop-filter:blur(10px)">📲 Install OpenCall app</button>
+<button id="sw-update" class="btn btn-ghost" style="display:none;position:fixed;bottom:18px;left:18px;z-index:120;
+  border-radius:14px;padding:11px 16px;font-weight:700;background:rgba(20,27,41,.92);border-color:var(--ink600);
+  box-shadow:0 10px 34px rgba(0,0,0,.5);backdrop-filter:blur(10px)">⟳ Update available — reload</button>
 
 <script>
 /* ============================================================
@@ -238,6 +252,52 @@ function activeSb() { return me ? sb : (guestCtx && guestCtx.sb) ? guestCtx.sb :
 
 const root = document.getElementById('root');
 const remoteAudio = document.getElementById('remoteAudio');
+
+/* ---------------- PWA install + update (zero-Play-Protect path) ---------------- */
+let deferredInstall = null;
+(function setupPwa() {
+  const btn = document.getElementById('pwa-install');
+  const upd = document.getElementById('sw-update');
+
+  // native install prompt (Chrome/Edge/Android)
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstall = e;
+    if (btn) btn.style.display = 'block';
+  });
+  if (btn) btn.onclick = async () => {
+    if (!deferredInstall) return;
+    deferredInstall.prompt();
+    await deferredInstall.userChoice;
+    deferredInstall = null;
+    btn.style.display = 'none';
+  };
+  window.addEventListener('appinstalled', () => { if (btn) btn.style.display = 'none'; });
+
+  // iOS Safari: no beforeinstallprompt — hint via share-sheet
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (isIOS && !standalone && btn) {
+    btn.style.display = 'block';
+    btn.textContent = '📲 Add to Home Screen (Share ▲ → Add)';
+    btn.onclick = () => { btn.style.display = 'none'; };
+  }
+
+  // service worker + update toast
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', () => {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            if (upd) { upd.style.display = 'block'; upd.onclick = () => location.reload(); }
+          }
+        });
+      });
+    }).catch(() => {});
+  }
+})();
 
 const RING_TIMEOUT_S = 45;
 

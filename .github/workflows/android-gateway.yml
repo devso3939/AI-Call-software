@@ -47,13 +47,16 @@ jobs:
             gradle :app:assembleRelease --no-daemon
           fi
 
-      # Verify the APK really is signed (fails the build rather than
-      # publishing an unsigned APK by mistake).
-      - name: Verify APK signature
+      # Verify the APK really is signed with every scheme modern Android checks
+      # (fails the build rather than publishing an unsigned APK by mistake).
+      - name: Verify APK signature (v1 + v2 + v3)
         run: |
           APK=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
           echo "Verifying: $APK"
-          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs "$APK"
+          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose --print-certs "$APK" | tee sig.txt
+          grep -q "Verified using v1 scheme: true" sig.txt || (echo "v1 scheme missing" && exit 1)
+          grep -q "Verified using v2 scheme: true" sig.txt || (echo "v2 scheme missing" && exit 1)
+          grep -q "Verified using v3 scheme: true" sig.txt || (echo "v3 scheme missing" && exit 1)
 
       # Give the APK a stable filename so the download URL never changes:
       #   https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk
@@ -78,20 +81,29 @@ jobs:
           body: |
             **Always up to date.** This release is replaced automatically on every
             build, so the download link always gives you the newest
-            OpenCall Gateway APK.
+            OpenCall Gateway APK (v1.2.0 · versionCode 3).
 
-            ### Signed release build
-            This APK is **code-signed with a consistent release key** — every
-            update installs cleanly over the previous version, and it satisfies
-            modern Android (Play Protect) safety requirements for sideloading.
+            ### Signed release build (v1 + v2 + v3 schemes)
+            This APK is **code-signed with a consistent release key** verified for
+            all Android signing schemes — updates install cleanly over previous
+            versions, and it satisfies modern Android (Play Protect) requirements
+            for sideloading.
+
+            ### ⚠️ First install — Play Protect note
+            If Android shows **"Blocked for your protection"**, that is Google's
+            standard warning for ANY app outside the Play Store (not a defect).
+            Tap **More details → Install anyway**. Full step-by-step guide for
+            every phone brand: **https://devso3939.github.io/AI-Call-software/install.html**
 
             ### Install
             1. Download `opencall-gateway.apk` on your Android phone
-            2. Allow "install unknown apps" when prompted
+            2. Open it → follow the guide above if Play Protect asks
             3. Open the app → enter the 6-digit pairing code from the web app's **Devices** tab → Pair
             4. Tap **Start gateway**
 
-            ### Web app
-            https://devso3939.github.io/AI-Call-software/app.html
+            ### No APK? Install the web app instead (zero warnings)
+            Open https://devso3939.github.io/AI-Call-software/app.html in Chrome
+            and tap **📲 Install OpenCall app** — installs like a native app with
+            no Play Protect involvement.
           files: apps/android-gateway/app/build/outputs/apk/release/opencall-gateway.apk
           fail_on_unmatched_files: true
