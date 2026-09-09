@@ -4,6 +4,12 @@ Legend (Master Prompt §119): a feature enters **DONE** only after a passing tes
 
 ## DONE (each verified by an executed test, not by code existing)
 
+- **v6 SIM gateway edition (free international SMS + calls via your own Android + SIM)** — deployed:
+  - Supabase migrations 6/6b/6c/6d applied + RPC smoke-tests all green (device pairing, command queue `FOR UPDATE SKIP LOCKED`, durable WebRTC signaling, `register_gateway_device` anon pairing with 6-digit code)
+  - Web app v6 live on GitHub Pages: gateway dialer route (free) vs Twilio fallback, SMS tab (send + realtime inbound), Devices pairing tab, inbound gateway call banner (bridge / answer-on-phone / reject)
+  - Own Android gateway app source complete (`apps/android-gateway/`, 8 Kotlin files, no third-party gateway dependency): pairing UI, foreground service command loop, SmsManager send + radio-level confirmation, SMS_RECEIVED inbound, TelecomManager dial/answer/end, WebRTC audio bridge with glare-free asymmetric roles (outbound: browser offers → phone answers; inbound: phone offers → browser answers), EncryptedSharedPreferences credential store
+  - APK CI: `.github/workflows/android-gateway.yml` (JDK 17 + Gradle 8.9, artifact `opencall-gateway-debug-apk`)
+  - Setup guide: `docs/GATEWAY_SETUP.md`
 - Monorepo bootstrap: npm workspaces, tsconfig base, .env loader, one-click `start-dev` scripts (bat/ps1) with health checks
 - Core packages: `types` (call state machine + ALLOWED_TRANSITIONS), `db` (SQLite embedded / Postgres-portable schema, migration runner), `eventbus`, `auth` (argon2id password hashing, JWT sessions), `livekit-tokens` (JWT room tokens), `routing` (ON_NET / SIP / FEDERATION / PSTN / NO_ROUTE classification)
 - Auth REST: register, login, me — verified via REST (alice/bob/carol/erin accounts)
