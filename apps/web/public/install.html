@@ -79,7 +79,7 @@
     <p>Turns your spare Android phone into a free cellular gateway for calls &amp; SMS — paired to your OpenCall account.</p>
     <div class="badges">
       <span class="badge">✓ Signed release build</span>
-      <span class="badge">✓ v1.2.0 · Android 8.0+</span>
+      <span class="badge">✓ v1.3.0 · Android 8.0+</span>
       <span class="badge">✓ No Play Store needed</span>
     </div>
     <a class="dl" href="https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk"
@@ -94,41 +94,47 @@
 
   <div class="sec">
     <h3>🛡️ If Android says “Blocked for your protection”</h3>
-    <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">This is <strong style="color:var(--text)">normal for any app outside the Play Store</strong> — Google shows it for every new sideloaded app until it builds reputation. The app is signed and safe. Here's how to finish the install:</p>
+    <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">Since April 2026 this message comes from Google's new <strong style="color:var(--text)">Android Developer Verifier</strong>. It appears for every APK whose developer isn't registered with Google — <strong style="color:var(--text)">it is not a malware verdict</strong>, and no APK signature can turn it off. Apps you installed before that never saw this dialog because they came from registered developers. Here are your options:</p>
     <div class="tabs" id="otabs">
-      <button class="otab on" data-pane="stock">Stock Android</button>
-      <button class="otab on" data-pane="samsung">Samsung</button>
-      <button class="otab" data-pane="xiaomi">Xiaomi / Redmi / POCO</button>
-      <button class="otab" data-pane="huawei">Huawei / Honor</button>
+      <button class="otab on" data-pane="stock">Quick: 1-tap bypass</button>
+      <button class="otab" data-pane="samsung">Permanent: Advanced Flow</button>
+      <button class="otab" data-pane="xiaomi">Samsung specifics</button>
+      <button class="otab" data-pane="huawei">Xiaomi / Huawei</button>
     </div>
     <div class="pane on" id="pane-stock">
       <div class="steps">
-        <div class="step"><div class="n">1</div><p>Tap <strong>More details</strong> on the block dialog.</p></div>
-        <div class="step"><div class="n">2</div><p>Tap <strong>Install anyway</strong> → <strong>OK</strong>.</p></div>
-        <div class="step"><div class="n">3</div><p>Done — this one-time choice also teaches Play Protect to trust future updates (same signature).</p></div>
+        <div class="step"><div class="n">1</div><p>Tap <strong>More details</strong> on the block dialog (small text link).</p></div>
+        <div class="step"><div class="n">2</div><p>Tap <strong>Install anyway</strong> → <strong>OK</strong>. Takes 3 seconds, needed once per app.</p></div>
+        <div class="step"><div class="n">3</div><p>Done — future updates with the same signature install without the dialog.</p></div>
       </div>
     </div>
     <div class="pane" id="pane-samsung">
       <div class="steps">
-        <div class="step"><div class="n">1</div><p>On the block dialog tap <strong>More details → Install anyway</strong>. If a Settings screen opens instead: <strong>Settings → Security → Install unknown apps</strong> → Chrome → Allow.</p></div>
-        <div class="step"><div class="n">2</div><p>If it still blocks: open <strong>Settings → Apps</strong> → <strong>Google Play Protect</strong>? No — go to <strong>Play Store → profile → Play Protect → ⚙️</strong>.</p></div>
-        <div class="step"><div class="n">3</div><p>Turn <strong>off “Scan apps with Play Protect”</strong>, install, then turn it back on.</p></div>
+        <div class="step"><div class="n">1</div><p>One-time setup: <strong>Settings → About phone → tap “Build number” 7×</strong> to unlock Developer options.</p></div>
+        <div class="step"><div class="n">2</div><p><strong>Settings → Developer options → Apps from unverified developers</strong> → select <strong>Allow</strong>.</p></div>
+        <div class="step"><div class="n">3</div><p>Confirm and wait <strong>24 hours</strong> (Google's cooldown — device-wide, once ever).</p></div>
+        <div class="step"><div class="n">4</div><p>After the wait, every sideloaded APK installs with a single <strong>Install anyway</strong> tap — no per-app friction, and scanning stays ON.</p></div>
       </div>
     </div>
     <div class="pane" id="pane-xiaomi">
       <div class="steps">
-        <div class="step"><div class="n">1</div><p>MIUI blocks by default: <strong>Settings → Privacy protection → Special permissions → Install unknown apps</strong> → your browser → Allow.</p></div>
-        <div class="step"><div class="n">2</div><p>Install and when MIUI security warns, tap <strong>Install anyway</strong>.</p></div>
+        <div class="step"><div class="n">1</div><p>On the block dialog tap <strong>More details → Install anyway</strong>.</p></div>
+        <div class="step"><div class="n">2</div><p>If a Settings screen opens instead: <strong>Settings → Apps → Install unknown apps</strong> → Chrome → Allow.</p></div>
+        <div class="step"><div class="n">3</div><p>Samsung sometimes doubles up with its own scanner — allow Chrome under both <strong>Settings → Security → Install unknown apps</strong> and <strong>Settings → Apps → Install unknown apps</strong>.</p></div>
       </div>
     </div>
     <div class="pane" id="pane-huawei">
       <div class="steps">
-        <div class="step"><div class="n">1</div><p><strong>Settings → Security → More settings → Install apps from external sources</strong> → your browser → Allow.</p></div>
-        <div class="step"><div class="n">2</div><p>If “Blocked by Play Protect” appears, tap <strong>Details → Install anyway</strong>.</p></div>
+        <div class="step"><div class="n">1</div><p><strong>Settings → Privacy protection → Special permissions → Install unknown apps</strong> → your browser → Allow.</p></div>
+        <div class="step"><div class="n">2</div><p>When MIUI/Huawei security warns mid-install, tap <strong>Install anyway</strong>.</p></div>
+        <div class="step"><div class="n">3</div><p>For “Blocked by Play Protect”: tap <strong>Details → Install anyway</strong>.</p></div>
       </div>
     </div>
     <div class="warn">
       <p><strong>Why you can trust this APK:</strong> the full source is public, the build is produced automatically on GitHub Actions, and the APK is signed with the project's release key. Verify anytime at the <a href="https://github.com/devso3939/AI-Call-software" style="color:var(--mint400)">public repo</a>.</p>
+    </div>
+    <div class="ok">
+      <p><strong>Want zero prompts forever?</strong> Google offers free <strong>limited-distribution developer accounts</strong> (up to 20 devices, no fee) — registering <code>app.opencall.gateway</code> there makes the verifier accept the app everywhere it's installed. See Google's “Android Developer Verification” docs.</p>
     </div>
   </div>
 

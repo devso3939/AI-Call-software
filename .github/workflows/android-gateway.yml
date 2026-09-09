@@ -84,20 +84,34 @@ jobs:
           body: |
             **Always up to date.** This release is replaced automatically on every
             build, so the download link always gives you the newest
-            OpenCall Gateway APK (v1.2.0 · versionCode 3).
+            OpenCall Gateway APK (v1.3.0 · versionCode 4).
+
+            ### What's new in v1.3.0
+            Dropped READ_SMS and READ_PHONE_NUMBERS (restricted permission
+            categories) — incoming SMS uses the SMS_RECEIVED broadcast, so the
+            app now requests the minimum permissions a SIM gateway can run on.
+            Cleaner permission profile for Play Protect's automatic checks.
 
             ### Signed release build (v2 + v3 signature schemes)
             This APK is **code-signed with a consistent release key** verified for
             the modern Android signing schemes (v2 + v3, covering Android 7 → 15+;
             v1/JAR is legacy-only and not used since the app requires Android 8+) —
-            updates install cleanly over previous versions, and it satisfies
-            modern Android (Play Protect) requirements for sideloading.
+            updates install cleanly over previous versions.
 
-            ### ⚠️ First install — Play Protect note
-            If Android shows **"Blocked for your protection"**, that is Google's
-            standard warning for ANY app outside the Play Store (not a defect).
-            Tap **More details → Install anyway**. Full step-by-step guide for
-            every phone brand: **https://devso3939.github.io/AI-Call-software/install.html**
+            ### ⚠️ About "Blocked for your protection"
+            Since April 2026 Google's **Android Developer Verifier** shows this
+            warning for APKs whose developer is **not registered with Google**
+            (Android Developer Console / Play Console) — it is an identity check,
+            not a malware verdict, and it applies regardless of how the APK is
+            signed. To install:
+            1. On the block dialog tap **More details → Install anyway** (1 time).
+            2. Or enable the one-time **Advanced Flow**: Settings → Developer
+               options → *Apps from unverified developers* → Allow, then wait
+               24 h once, and afterwards every unverified APK installs with a
+               single "Install anyway" tap.
+            Full brand-by-brand guide: **https://devso3939.github.io/AI-Call-software/install.html**
+            (Verified path for the future: free **limited-distribution** developer
+            account → register `app.opencall.gateway` → installs with no block.)
 
             ### Install
             1. Download `opencall-gateway.apk` on your Android phone

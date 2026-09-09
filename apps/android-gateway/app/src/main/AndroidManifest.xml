@@ -11,21 +11,22 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-  <!-- ============ SMS ============ -->
+  <!-- ============ SMS ============
+       READ_SMS intentionally NOT requested (one of Google's restricted
+       permission categories): incoming SMS arrives via the SMS_RECEIVED
+       broadcast PDU, which needs only RECEIVE_SMS. Fewer special
+       permissions = cleaner Play Protect / verifier profile. -->
   <uses-permission android:name="android.permission.SEND_SMS" />
   <uses-permission android:name="android.permission.RECEIVE_SMS" />
-  <uses-permission android:name="android.permission.READ_SMS" />
 
-  <!-- ============ cellular calls ============ -->
+  <!-- ============ cellular calls ============
+       READ_PHONE_NUMBERS intentionally NOT requested — the only previous use
+       was a non-essential SIM-number lookup at pairing (deprecated line1Number). -->
   <uses-permission android:name="android.permission.READ_PHONE_STATE" />
   <uses-permission android:name="android.permission.CALL_PHONE" />
   <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-
-  <!-- modem/VoLTE quirk: incoming-call receiver won't fire while app is in
-       foreground on some chipsets unless this is declared -->
-  <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
 
   <application
     android:label="@string/app_name"

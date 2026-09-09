@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.telephony.TelephonyManager
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -50,14 +49,15 @@ class MainActivity : AppCompatActivity() {
     // ============ permissions ============
 
     private val neededPerms: Array<String> get() {
+        // READ_SMS / READ_PHONE_NUMBERS intentionally dropped (restricted
+        // categories) — incoming SMS uses the SMS_RECEIVED PDU broadcast and
+        // the SIM number lookup was non-essential.
         val base = mutableListOf(
             Manifest.permission.SEND_SMS,
             Manifest.permission.RECEIVE_SMS,
-            Manifest.permission.READ_SMS,
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.CALL_PHONE,
             Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.READ_PHONE_NUMBERS,
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             base.add(Manifest.permission.ANSWER_PHONE_CALLS)
@@ -168,16 +168,11 @@ class MainActivity : AppCompatActivity() {
         pairBtn.isEnabled = false
         Thread {
             try {
-                val sim = try {
-                    (getSystemService(TELEPHONY_SERVICE) as? TelephonyManager)?.line1Number
-                } catch (_: Exception) { null }
-
                 val res = Rpc.rpc(
                     "register_gateway_device",
                     JSONObject()
                         .put("p_code", code)
-                        .put("p_name", android.os.Build.MODEL ?: "Android phone")
-                        .putOpt("p_sim_number", sim?.takeIf { it.isNotBlank() }),
+                        .put("p_name", android.os.Build.MODEL ?: "Android phone"),
                 )
                 val devId = res?.optString("deviceId").orEmpty()
                 val secret = res?.optString("deviceSecret").orEmpty()
