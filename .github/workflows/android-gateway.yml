@@ -35,29 +35,40 @@ jobs:
           gradle wrapper --gradle-version 8.9 || true
           chmod +x gradlew || true
 
-      - name: Build debug APK
+      # SIGNED RELEASE build — consistent keystore committed in the repo means:
+      #   * same signature on every build (updates install over old versions)
+      #   * properly signed release APK (not a debug build), which is what
+      #     Play Protect expects — this is the fix for the install-block warning
+      - name: Build signed release APK
         run: |
           if [ -x ./gradlew ]; then
-            ./gradlew :app:assembleDebug --no-daemon
+            ./gradlew :app:assembleRelease --no-daemon
           else
-            gradle :app:assembleDebug --no-daemon
+            gradle :app:assembleRelease --no-daemon
           fi
 
+      # Verify the APK really is signed (fails the build rather than
+      # publishing an unsigned APK by mistake).
+      - name: Verify APK signature
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
+          echo "Verifying: $APK"
+          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs "$APK"
+
       # Give the APK a stable filename so the download URL never changes:
-      #   https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway-debug.apk
+      #   https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk
       - name: Rename APK to stable filename
         run: |
-          cd app/build/outputs/apk/debug
+          cd app/build/outputs/apk/release
           for f in *.apk; do
             [ -e "$f" ] || continue
-            case "$f" in opencall-gateway-debug.apk) continue;; esac
-            cp "$f" opencall-gateway-debug.apk
+            case "$f" in opencall-gateway.apk) continue;; esac
+            cp "$f" opencall-gateway.apk
           done
           ls -la
 
       # Rolling "latest" release: every build REPLACES the single latest release,
-      # so the URL above ALWAYS serves the newest APK no matter how often the
-      # app is updated. No version bumps or link edits needed, ever.
+      # so the URL above ALWAYS serves the newest signed APK.
       - name: Publish to rolling 'latest' release
         if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
@@ -69,13 +80,18 @@ jobs:
             build, so the download link always gives you the newest
             OpenCall Gateway APK.
 
+            ### Signed release build
+            This APK is **code-signed with a consistent release key** — every
+            update installs cleanly over the previous version, and it satisfies
+            modern Android (Play Protect) safety requirements for sideloading.
+
             ### Install
-            1. Download `opencall-gateway-debug.apk` on your Android phone
+            1. Download `opencall-gateway.apk` on your Android phone
             2. Allow "install unknown apps" when prompted
             3. Open the app → enter the 6-digit pairing code from the web app's **Devices** tab → Pair
             4. Tap **Start gateway**
 
             ### Web app
             https://devso3939.github.io/AI-Call-software/app.html
-          files: apps/android-gateway/app/build/outputs/apk/debug/opencall-gateway-debug.apk
+          files: apps/android-gateway/app/build/outputs/apk/release/opencall-gateway.apk
           fail_on_unmatched_files: true

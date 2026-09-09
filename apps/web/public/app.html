@@ -11,6 +11,8 @@
     --ink950:#070b14;--ink900:rgba(17,24,39,.72);--ink800:#141b29;--ink700:rgba(148,163,184,.14);--ink600:rgba(148,163,184,.22);
     --mint:#10b981;--mint400:#34d399;--mint600:#059669;
     --cyan:#22d3ee;--violet:#a78bfa;
+    --sidebar:#0a0f1a;--sidebar-active:rgba(16,185,129,.10);--sidebar-border:rgba(148,163,184,.10);
+    --key:rgba(20,27,41,.85);--key-hi:rgba(148,163,184,.10);
   }
   *{box-sizing:border-box}
   body{margin:0;color:#e5eaf3;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;
@@ -25,7 +27,50 @@
   ::-webkit-scrollbar{width:9px;height:9px}
   ::-webkit-scrollbar-thumb{background:#26334a;border-radius:99px}
   ::-webkit-scrollbar-track{background:transparent}
-  main{max-width:640px;margin:0 auto;padding:16px 16px 96px}
+
+  /* ================= dashboard shell ================= */
+  .shell{display:flex;min-height:100vh}
+  .sidebar{width:232px;flex-shrink:0;background:var(--sidebar);border-right:1px solid var(--sidebar-border);
+    display:flex;flex-direction:column;padding:18px 12px;position:sticky;top:0;height:100vh;z-index:40}
+  .brand{display:flex;align-items:center;gap:10px;padding:4px 10px 16px;border-bottom:1px solid var(--sidebar-border);margin-bottom:14px}
+  .brand .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--mint),var(--cyan));
+    display:flex;align-items:center;justify-content:center;font-size:1.05rem;box-shadow:0 4px 16px rgba(16,185,129,.35)}
+  .brand h1{font-size:1.02rem;margin:0;letter-spacing:-.02em;line-height:1.1}
+  .brand .tiny{display:block;margin-top:1px}
+  .sidebtn{display:flex;align-items:center;gap:11px;width:100%;border:none;background:transparent;color:#8b98ad;
+    padding:10px 12px;border-radius:11px;font-size:.88rem;font-weight:600;cursor:pointer;text-align:left;
+    transition:background .15s,color .15s;font-family:inherit}
+  .sidebtn:hover{background:rgba(148,163,184,.07);color:#cbd5e1}
+  .sidebtn.on{background:var(--sidebar-active);color:var(--mint400);box-shadow:inset 0 0 0 1px rgba(16,185,129,.22)}
+  .sidebtn .ico{font-size:1rem;width:22px;text-align:center;flex-shrink:0}
+  .sidebtn .badge{margin-left:auto;background:var(--mint);color:#04110c;border-radius:999px;font-size:.65rem;font-weight:700;padding:1px 7px}
+  .sidefoot{margin-top:auto;padding:12px 10px 4px;border-top:1px solid var(--sidebar-border)}
+  .userchip{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .avatar{width:34px;height:34px;border-radius:999px;background:linear-gradient(135deg,#1e293b,#334155);
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.82rem;color:var(--mint400);
+    border:1px solid rgba(16,185,129,.30);flex-shrink:0}
+  .userchip .meta{min-width:0}
+  .userchip .meta strong{display:block;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .userchip .meta .tiny{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .main{flex:1;min-width:0;padding:22px 26px 110px;max-width:1060px}
+  .pagetitle{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 18px;flex-wrap:wrap}
+  .pagetitle h2{font-size:1.25rem;margin:0;letter-spacing:-.02em}
+  .pagetitle .sub{margin:2px 0 0;font-size:.82rem;color:#94a3b8}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid2 .span2{grid-column:1 / -1}
+  @media (max-width:900px){
+    .sidebar{position:fixed;left:0;top:0;bottom:0;transform:translateX(-100%);transition:transform .22s;box-shadow:0 0 60px rgba(0,0,0,.6)}
+    .sidebar.open{transform:translateX(0)}
+    .shell{display:block}
+    .main{padding:16px 14px 110px;max-width:100%}
+    .grid2{grid-template-columns:1fr}
+    .menutoggle{display:inline-flex !important}
+  }
+  .menutoggle{display:none;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;
+    border:1px solid var(--ink600);background:rgba(20,27,41,.8);color:#cbd5e1;cursor:pointer;font-size:1rem}
+  .sideback{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:35;display:none}
+  .sideback.show{display:block}
+
   h1{font-size:1.3rem;margin:0;letter-spacing:-.02em}
   h2{font-size:1.02rem;margin:0 0 8px;letter-spacing:-.01em}
   .card{border-radius:18px;border:1px solid var(--ink700);background:var(--ink900);padding:20px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 10px 34px rgba(0,0,0,.35)}
@@ -61,11 +106,82 @@
   .pill.created,.pill.dialing{background:rgba(251,191,36,.15);color:#fcd34d}
   .contact{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--ink700);border-radius:14px;background:rgba(20,27,41,.7);padding:10px 12px;margin-bottom:8px;transition:border-color .15s}
   .contact:hover{border-color:rgba(52,211,153,.35)}
-  .tabs{display:flex;gap:5px;margin:14px 0;background:rgba(20,27,41,.6);border:1px solid var(--ink700);border-radius:13px;padding:4px}
-  .tabs button{flex:1;border-radius:9px;border:1px solid transparent;background:transparent;color:#8b98ad;padding:8px 4px;font-size:.8rem;font-weight:600;cursor:pointer;transition:background .15s,color .15s}
-  .tabs button:hover{color:#cbd5e1}
-  .tabs button.on{background:linear-gradient(135deg,var(--mint),var(--cyan));color:#04110c;box-shadow:0 4px 14px rgba(16,185,129,.30)}
-  .bigcall{position:fixed;left:0;right:0;bottom:0;background:rgba(10,15,24,.92);border-top:1px solid var(--ink700);padding:16px;box-shadow:0 -12px 40px rgba(0,0,0,.6);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:50}
+
+  /* ================= professional dialer keypad ================= */
+  .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;max-width:320px;margin-left:auto;margin-right:auto}
+  .key{aspect-ratio:1;border-radius:999px;border:1px solid var(--ink700);background:var(--key);
+    color:#e5eaf3;font-size:1.5rem;font-weight:600;cursor:pointer;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;line-height:1;transition:background .12s,transform .08s,border-color .12s;
+    -webkit-tap-highlight-color:transparent;user-select:none;font-family:inherit}
+  .key small{display:block;font-size:.5rem;font-weight:600;letter-spacing:.18em;color:#64748b;margin-top:4px;text-transform:uppercase}
+  .key:hover{background:var(--key-hi);border-color:rgba(52,211,153,.4)}
+  .key:active{transform:scale(.94);background:rgba(16,185,129,.15);border-color:var(--mint600)}
+  .dial-display{min-height:56px;border-radius:16px;border:1px solid var(--ink600);background:rgba(20,27,41,.8);
+    display:flex;align-items:center;justify-content:center;gap:4px;padding:10px 16px;cursor:text;overflow-x:auto}
+  .dial-display .num{font-size:1.45rem;font-weight:600;letter-spacing:.05em;white-space:nowrap}
+  .dial-display .caret{width:2px;height:26px;background:var(--mint400);border-radius:2px;animation:pulse 1.1s ease-in-out infinite}
+  .dial-display .ph{color:#556379;font-size:1rem;font-weight:400}
+  .callbtn{width:64px;height:64px;border-radius:999px;border:none;background:linear-gradient(135deg,var(--mint),var(--cyan));
+    color:#04110c;font-size:1.55rem;cursor:pointer;box-shadow:0 8px 28px rgba(16,185,129,.40);display:flex;
+    align-items:center;justify-content:center;margin:16px auto 0;transition:transform .12s,box-shadow .15s;flex-shrink:0}
+  .callbtn:hover:not(:disabled){transform:scale(1.06);box-shadow:0 12px 34px rgba(16,185,129,.55)}
+  .callbtn:active:not(:disabled){transform:scale(.97)}
+  .callbtn:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
+  .callbtn.end{background:#dc2626;color:#fff;box-shadow:0 8px 28px rgba(220,38,38,.40)}
+  .keypadwrap{display:flex;flex-direction:column;align-items:center}
+
+  /* ================= auth / guest pages ================= */
+  .authwrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:22px;position:relative}
+  .authcard{width:100%;max-width:400px;background:var(--ink900);border:1px solid var(--ink700);border-radius:20px;
+    padding:30px 28px 24px;box-shadow:0 24px 70px rgba(0,0,0,.55);animation:fadein .3s;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+  .authcard .logo{width:52px;height:52px;border-radius:15px;background:linear-gradient(135deg,var(--mint),var(--cyan));
+    display:flex;align-items:center;justify-content:center;font-size:1.5rem;margin:0 auto 14px;box-shadow:0 6px 24px rgba(16,185,129,.4)}
+  .authcard h1{font-size:1.45rem;margin:0;text-align:center;letter-spacing:-.02em}
+  .authcard .tagline{text-align:center;color:#94a3b8;font-size:.85rem;margin:6px 0 22px}
+  .authbadge{display:flex;justify-content:center;margin-bottom:18px}
+  .authbadge span{font-size:.72rem;font-weight:600;color:var(--mint400);background:rgba(16,185,129,.10);
+    border:1px solid rgba(16,185,129,.28);border-radius:999px;padding:4px 14px}
+  .demobox{background:rgba(20,27,41,.6);border:1px solid var(--ink700);border-radius:12px;padding:12px 14px;margin-top:16px}
+  .demobox p{margin:0 0 10px;font-size:.75rem;color:#94a3b8}
+  .authfoot{text-align:center;margin:16px 0 0;font-size:.72rem;color:#64748b}
+  .authfoot a{color:#8b98ad}
+  .guestavatar{width:76px;height:76px;border-radius:999px;background:linear-gradient(135deg,#1e293b,#334155);
+    display:flex;align-items:center;justify-content:center;font-size:1.9rem;color:var(--mint400);font-weight:700;
+    margin:0 auto 14px;border:1px solid rgba(52,211,153,.35);box-shadow:0 0 40px rgba(16,185,129,.18)}
+  .guestbadge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:600;color:var(--mint400);
+    background:rgba(16,185,129,.10);border:1px solid rgba(16,185,129,.28);border-radius:999px;padding:4px 14px;margin-bottom:14px}
+  .guesthint{display:flex;flex-direction:column;gap:8px;margin:18px 0 4px}
+  .guesthint div{display:flex;align-items:center;gap:9px;font-size:.8rem;color:#94a3b8;text-align:left}
+  .guesthint .ic{width:30px;height:30px;flex-shrink:0;border-radius:9px;background:rgba(20,27,41,.8);
+    border:1px solid var(--ink700);display:flex;align-items:center;justify-content:center;font-size:.85rem}
+
+  /* ================= active call overlay ================= */
+  .callstage{position:fixed;inset:0;background:rgba(7,11,20,.97);z-index:100;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);animation:fadein .25s}
+  @keyframes fadein{from{opacity:0}to{opacity:1}}
+  .callstage .ring{width:92px;height:92px;border-radius:999px;background:linear-gradient(135deg,rgba(16,185,129,.25),rgba(34,211,238,.18));
+    display:flex;align-items:center;justify-content:center;font-size:2.2rem;margin-bottom:18px;
+    border:1px solid rgba(52,211,153,.4);box-shadow:0 0 60px rgba(16,185,129,.25)}
+  .callstage .ring.pulse{animation:ringpulse 1.4s ease-in-out infinite}
+  @keyframes ringpulse{0%,100%{box-shadow:0 0 40px rgba(16,185,129,.22)}50%{box-shadow:0 0 90px rgba(16,185,129,.5);transform:scale(1.04)}}
+  .callstage h3{font-size:1.5rem;margin:0 0 4px;letter-spacing:-.02em}
+  .callstage .cstate{color:#94a3b8;font-size:.9rem;margin:0 0 26px}
+  .callstage .cbtns{display:flex;gap:16px;align-items:center}
+  .cbig{width:66px;height:66px;border-radius:999px;border:none;font-size:1.5rem;cursor:pointer;display:flex;
+    align-items:center;justify-content:center;transition:transform .12s,box-shadow .15s}
+  .cbig:hover{transform:scale(1.07)}
+  .cbig.accept{background:linear-gradient(135deg,var(--mint),var(--cyan));color:#04110c;box-shadow:0 8px 30px rgba(16,185,129,.45)}
+  .cbig.decline{background:#dc2626;color:#fff;box-shadow:0 8px 30px rgba(220,38,38,.40)}
+  .cbig.ctrl{background:rgba(148,163,184,.10);border:1px solid var(--ink600);color:#cbd5e1;width:56px;height:56px;font-size:1.2rem}
+  .cbig.ctrl.active{background:rgba(220,38,38,.2);border-color:rgba(220,38,38,.5)}
+  .cbig.end{background:#dc2626;color:#fff;box-shadow:0 8px 30px rgba(220,38,38,.40)}
+  .callstage .quality{position:absolute;top:22px;right:26px;display:flex;align-items:center;gap:8px;font-size:.8rem;color:#94a3b8}
+  .callstage .route{position:absolute;top:22px;left:26px;font-size:.78rem;color:#64748b}
+  .callstage .timers{font-variant-numeric:tabular-nums;font-size:.95rem;color:#cbd5e1;margin:-14px 0 22px}
+
+  /* floating mini-banner for phone-side gateway call stages */
+  .bigcall{position:fixed;left:0;right:0;bottom:0;background:rgba(10,15,24,.92);border-top:1px solid var(--ink700);padding:16px;box-shadow:0 -12px 40px rgba(0,0,0,.6);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:90}
+
   .qdot{width:10px;height:10px;border-radius:999px;background:#64748b;display:inline-block}
   .qdot.excellent{background:var(--mint400)}
   .qdot.good{background:#fbbf24}
@@ -971,12 +1087,15 @@ async function createGuestLink() {
 let loginMode = 'login';
 function renderLogin() {
   document.title = 'OpenCall AI — Sign in';
+  const isLogin = loginMode === 'login';
   root.innerHTML = `
-  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:96vh">
-    <div class="card" style="width:100%;max-width:380px">
-      <h1 style="margin-bottom:2px">OpenCall <span class="mint">AI</span></h1>
-      <p class="muted" style="margin:0 0 14px">Real internet calls. Honest routing. ${loginMode === 'login' ? 'Sign in' : 'Create account'}:</p>
-      ${loginMode === 'register' ? `
+  <div class="authwrap">
+    <div class="authcard">
+      <div class="logo">☎</div>
+      <h1>OpenCall <span class="mint">AI</span></h1>
+      <p class="tagline">Real internet calls. Honest routing.</p>
+      <div class="authbadge"><span>${isLogin ? '🔐 Sign in to your workspace' : '✨ Create your workspace'}</span></div>
+      ${!isLogin ? `
         <label class="label">Display name</label>
         <input class="input" id="f-name" placeholder="Alice" autocomplete="name">` : ''}
       <label class="label">Email</label>
@@ -984,18 +1103,19 @@ function renderLogin() {
       <label class="label">Password</label>
       <input class="input" id="f-pass" type="password" placeholder="••••••••" autocomplete="current-password">
       <div id="login-err"></div>
-      <button class="btn btn-primary" style="width:100%;margin-top:14px" id="f-go">${loginMode === 'login' ? 'Sign in' : 'Create account'}</button>
-      <p class="muted" style="text-align:center;margin:12px 0 0">
-        ${loginMode === 'login' ? 'No account?' : 'Have an account?'}
-        <a href="#" id="f-mode">${loginMode === 'login' ? 'Register' : 'Sign in'}</a>
+      <button class="btn btn-primary" style="width:100%;margin-top:14px;padding:12px" id="f-go">${isLogin ? 'Sign in' : 'Create account'}</button>
+      <p class="muted" style="text-align:center;margin:14px 0 0;font-size:.8rem">
+        ${isLogin ? 'No account yet?' : 'Already registered?'}
+        <a href="#" id="f-mode">${isLogin ? 'Register' : 'Sign in'}</a>
       </p>
-      <hr style="border:none;border-top:1px solid var(--ink700);margin:16px 0 12px">
-      <p class="tiny" style="margin:0 0 8px">Demo accounts (password <code>opencall123</code>):<br>alice@opencall.app · bob@opencall.app</p>
-      <div class="row" style="gap:8px">
-        <button class="btn btn-ghost" style="flex:1" id="f-demo-a">Quick login Alice</button>
-        <button class="btn btn-ghost" style="flex:1" id="f-demo-b">Quick login Bob</button>
+      <div class="demobox">
+        <p>Just exploring? Demo accounts (password <code>opencall123</code>):</p>
+        <div class="row" style="gap:8px">
+          <button class="btn btn-ghost" style="flex:1" id="f-demo-a">👤 Alice</button>
+          <button class="btn btn-ghost" style="flex:1" id="f-demo-b">👤 Bob</button>
+        </div>
       </div>
-      <p class="tiny" style="margin:12px 0 0"><a href="./">← Back to landing page</a></p>
+      <p class="authfoot"><a href="./">← Back to landing page</a></p>
     </div>
   </div>`;
   document.getElementById('f-mode').onclick = (e) => { e.preventDefault(); loginMode = loginMode === 'login' ? 'register' : 'login'; renderLogin(); };
@@ -1011,69 +1131,172 @@ function renderLogin() {
   document.getElementById('f-demo-b').onclick = () => doLogin('bob@opencall.app', 'opencall123');
 }
 
-/* ---------------- UI: app shell ---------------- */
+/* ---------------- UI: app shell (professional dashboard) ---------------- */
+function toggleSide() {
+  const sb = document.getElementById('sidebar'); if (sb) sb.classList.toggle('open');
+  const bk = document.getElementById('sideback'); if (bk) bk.classList.toggle('show');
+}
 function renderApp() {
   document.title = 'OpenCall AI';
   if (!me) return;
   const body = tab === 'dialer' ? tabDialer() : tab === 'sms' ? tabSms() : tab === 'devices' ? tabDevices()
              : tab === 'connect' ? tabConnect() : tab === 'contacts' ? tabContacts()
              : tab === 'history' ? tabHistory() : tabLinks();
+  const initial = (me.displayName || '?').trim().charAt(0).toUpperCase();
+  const titles = {
+    dialer:   ['Dialer', 'Internet calls, SIM gateway and PSTN — honest routing shown before you dial.'],
+    sms:      ['Messages', 'Real SMS from your own SIM via your paired Android.'],
+    devices:  ['Devices', 'Your paired Android gateways and their live status.'],
+    connect:  ['Connect', 'API keys that let other apps and services use your number.'],
+    contacts: ['Contacts', 'People on OpenCall — free internet calls to anyone here.'],
+    history:  ['Call history', 'Every call with its real route and outcome.'],
+    links:    ['Guest links', 'Let anyone call you from a browser — no account needed.'],
+  };
+  const t = titles[tab] || ['OpenCall', ''];
+  const sideOpen = document.getElementById('sidebar')?.classList.contains('open') ? ' show' : '';
   root.innerHTML = `
-    <header class="row between" style="margin-bottom:14px">
-      <div>
-        <h1>OpenCall <span class="mint">AI</span> <span class="tiny">cloud</span></h1>
-        <p class="muted" style="margin:0">${esc(me.displayName)} · <span class="mint">${esc(me.internetIdentity)}</span> · online</p>
-      </div>
-      <button class="btn btn-ghost" onclick="logout()">Sign out</button>
-    </header>
-    ${body}
+    <div class="shell">
+      ${tab === 'dialer' ? '' : `<div class="sideback${sideOpen}" onclick="toggleSide()"></div>`}
+      <aside class="sidebar" id="sidebar">
+        <div class="brand">
+          <div class="logo">☎</div>
+          <h1>OpenCall <span class="mint">AI</span><span class="tiny">cloud workspace</span></h1>
+        </div>
+        ${[
+          ['dialer','⌨','Dialer'],
+          ['sms','💬','Messages'],
+          ['history','🕘','History'],
+          ['contacts','👥','Contacts'],
+          ['devices','🤖','Devices'],
+          ['connect','🔌','Connect'],
+          ['links','🔗','Links'],
+        ].map(([id, ico, name]) => `<button class="sidebtn ${tab===id?'on':''}" onclick="setTab('${id}')">
+            <span class="ico">${ico}</span>${name}
+          </button>`).join('')}
+        <div class="sidefoot">
+          <div class="userchip">
+            <div class="avatar">${esc(initial)}</div>
+            <div class="meta" style="flex:1">
+              <strong>${esc(me.displayName)}</strong>
+              <span class="tiny mint">${esc(me.internetIdentity)}</span>
+            </div>
+          </div>
+          <button class="sidebtn" onclick="logout()"><span class="ico">⎋</span>Sign out</button>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="pagetitle">
+          <div class="row" style="gap:10px">
+            <button class="menutoggle" onclick="toggleSide()">☰</button>
+            <div>
+              <h2>${esc(t[0])}</h2>
+              <p class="sub">${esc(t[1])}</p>
+            </div>
+          </div>
+          <div class="row">
+            ${gatewayOnline ? `<span class="pill completed">🤖 ${esc(gatewayOnline.sim_number || gatewayOnline.name || 'gateway')}</span>` : ''}
+            ${pstnConfigured === true && twilioReady ? '<span class="pill completed">📱 PSTN</span>' : ''}
+          </div>
+        </div>
+        ${body}
+        <div id="app-err" style="margin-top:12px"></div>
+      </main>
+    </div>
     ${callBanner()}
   `;
-}
-
-function tabsHtml() {
-  return `<div class="tabs">
-    <button class="${tab==='dialer'?'on':''}" onclick="setTab('dialer')">Dialer</button>
-    <button class="${tab==='sms'?'on':''}" onclick="setTab('sms')">SMS</button>
-    <button class="${tab==='devices'?'on':''}" onclick="setTab('devices')">Devices</button>
-    <button class="${tab==='connect'?'on':''}" onclick="setTab('connect')">Connect</button>
-    <button class="${tab==='contacts'?'on':''}" onclick="setTab('contacts')">Contacts</button>
-    <button class="${tab==='history'?'on':''}" onclick="setTab('history')">History</button>
-    <button class="${tab==='links'?'on':''}" onclick="setTab('links')">Links</button>
-  </div>`;
+  wireDialKeys();
 }
 
 function tabDialer() {
   const isPhone = /^\+?\d[\d\s()-]{5,}$/.test((dial || '').trim());
   const gwReady = !!gatewayOnline;
   const phoneReady = pstnConfigured === true && twilioReady;
-  let callBtn;
-  if (!isPhone) {
-    callBtn = `<button id="btnCall" class="btn btn-primary" style="width:100%;margin-top:14px" ${canCall(dial) ? '' : 'disabled'} onclick="onCallClick()">📞 Call</button>`;
-  } else if (gwReady && !forceTwilio) {
-    callBtn = `<button id="btnCall" class="btn btn-primary" style="width:100%;margin-top:14px" ${canCall(dial) ? '' : 'disabled'} onclick="onCallClick()">📞 Call via my Android · FREE</button>`;
-  } else if (pstnConfigured) {
-    callBtn = `<button id="btnCall" class="btn btn-primary" style="width:100%;margin-top:14px" ${(canCall(dial) && phoneReady) ? '' : 'disabled'} onclick="onCallClick()">📞 ${phoneReady ? (gwReady ? 'Call via Twilio · paid' : 'Call phone') : 'Phone connecting…'}</button>`;
-  } else {
-    callBtn = `<button id="btnCall" class="btn btn-primary" style="width:100%;margin-top:14px" disabled>📞 No phone route available</button>`;
-  }
+  let routeLabel, routeClass;
+  if (!isPhone) { routeLabel = 'FREE · On-net internet call'; routeClass = 'mint'; }
+  else if (gwReady && !forceTwilio) { routeLabel = 'FREE · via your SIM gateway'; routeClass = 'mint'; }
+  else if (pstnConfigured && phoneReady) { routeLabel = 'PSTN · carrier rates apply'; routeClass = ''; }
+  else if (pstnConfigured) { routeLabel = 'PSTN · connecting…'; routeClass = ''; }
+  else { routeLabel = gwReady ? 'FREE · via your SIM gateway' : 'No phone route configured'; routeClass = ''; }
   const routeToggle = (gwReady && pstnConfigured)
-    ? `<button class="btn btn-ghost tiny" style="margin-top:8px" onclick="forceTwilio=!forceTwilio;renderApp()">Route: ${forceTwilio ? 'Twilio (paid) — switch to my Android (free)' : 'my Android (free) — switch to Twilio (paid)'}</button>`
+    ? `<button class="btn btn-ghost tiny" style="margin-top:10px" onclick="forceTwilio=!forceTwilio;renderApp()">Route: ${forceTwilio ? 'Twilio (paid) — switch to my Android (free)' : 'my Android (free) — switch to Twilio (paid)'}</button>`
     : '';
   return `
-  <div class="card">
-    <h2>Dial</h2>
-    <input class="input" id="dial" placeholder="bob@opencall or +995599123456" value="${esc(dial)}" oninput="dial=this.value;updateEstimate()" onkeydown="if(event.key==='Enter'){event.preventDefault();if(!document.getElementById('btnCall').disabled)onCallClick()}" style="font-size:1.1rem" autocomplete="off">
-    <div id="estimate" class="tiny" style="margin:8px 0 0">${estimateFor(dial)}</div>
-    ${callBtn}
-    ${routeToggle}
-    <div id="app-err"></div>
-    ${gwReady ? `<p class="tiny" style="margin:14px 0 0">🤖 SIM gateway <span class="mint">online</span> · ${esc(gatewayOnline.name || 'Android phone')} · your number <span class="mint">${esc(gatewayOnline.sim_number || 'unknown')}</span> · SMS + calls from your own SIM, free</p>` : ''}
-    ${pstnConfigured === false ? '<p class="tiny" style="margin:6px 0 0">📱 Twilio phone calls: not configured. ' + (gwReady ? 'Your Android gateway covers real phone calls free.' : 'Internet calls work now. Add Twilio credentials or pair your Android phone in Devices.') + '</p>' :
-      (pstnConfigured && !twilioReady ? '<p class="tiny" style="margin:6px 0 0">📱 Connecting to the Twilio phone network…</p>' :
-      (pstnConfigured ? `<p class="tiny" style="margin:6px 0 0">📱 Twilio live · caller ID <span class="mint">${esc(pstnCallerId)}</span> · carrier rates apply</p>` : ''))}
+  <div class="grid2">
+    <div class="card keypadwrap">
+      <input class="dial-display" id="dial-input" placeholder="Enter number or name" value="${esc(dial)}"
+        inputmode="tel" autocomplete="off" aria-label="Phone number or OpenCall username"
+        oninput="dial=this.value;updateEstimate()"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();if(!document.getElementById('btnCall').disabled)onCallClick()}">
+      <div class="keypad">
+        ${[['1',''],['2','ABC'],['3','DEF'],['4','GHI'],['5','JKL'],['6','MNO'],['7','PQRS'],['8','TUV'],['9','WXYZ'],['*',''],['0','+'],['#','']]
+          .map(([d, sub]) => `<button class="key" data-digit="${d}" type="button"><span>${d}</span>${sub ? `<small>${sub}</small>` : '<small>&nbsp;</small>'}</button>`).join('')}
+      </div>
+      <div class="row" style="gap:12px;margin-top:6px">
+        <button class="btn btn-ghost tiny" onclick="dialEdit(dial.slice(0,-1))" ${dial ? '' : 'disabled'}>⌫ Delete</button>
+        <button class="btn btn-ghost tiny" onclick="dialEdit('')" ${dial ? '' : 'disabled'}>Clear</button>
+      </div>
+      <button id="btnCall" class="callbtn" ${canCall(dial) ? '' : 'disabled'}
+        onclick="onCallClick()" title="Call ${esc(dial || '')}" aria-label="Start call">📞</button>
+      <div class="tiny" style="margin-top:8px">Tap the green button or press Enter to call</div>
+    </div>
+    <div class="card">
+      <h2>Route</h2>
+      <div style="font-size:1.05rem;font-weight:700" class="${routeClass}">${esc(routeLabel)}</div>
+      <div id="estimate" class="tiny" style="margin:8px 0 0">${estimateFor(dial)}</div>
+      ${routeToggle}
+      <div style="margin-top:16px;border-top:1px solid var(--ink700);padding-top:14px">
+        <div class="tiny" style="text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Recent</div>
+        ${history.length === 0 ? '<p class="muted" style="margin:0">No calls yet — your recent calls will appear here.</p>' :
+          history.slice(0, 4).map(h => {
+            const other = h.created_by === me.id
+              ? (h.normalized_destination || h.requested_destination || 'unknown')
+              : (h.guest_name ? (h.guest_name + ' (guest)') : 'incoming');
+            return `<div class="row between" style="padding:7px 0;border-bottom:1px solid var(--ink700)">
+              <div>
+                <div style="font-size:.85rem">${esc(other)}</div>
+                <div class="tiny">${esc(h.route_type || 'ON_NET')} · ${relTime(h.created_at)}</div>
+              </div>
+              <span class="pill ${esc(h.status)}">${esc(h.status)}</span>
+            </div>`; }).join('')}
+      </div>
+      <div style="margin-top:14px">
+        ${contacts.slice(0, 4).map(c => `
+          <div class="row between" style="padding:6px 0">
+            <div class="tiny"><strong style="color:#cbd5e1;font-size:.85rem">${esc(c.display_name)}</strong> · <span class="mint">${esc(c.internet_identity)}</span></div>
+            <button class="btn btn-ghost tiny" onclick="dialUser('${esc(c.internet_identity)}')">Call</button>
+          </div>`).join('')}
+      </div>
+    </div>
   </div>
-  ${tabsHtml()}`;
+  <p class="tiny" style="margin:12px 2px 0">
+    ${gwReady ? `🤖 SIM gateway <span class="mint">online</span> · ${esc(gatewayOnline.name || 'Android phone')} · your number <span class="mint">${esc(gatewayOnline.sim_number || 'unknown')}</span> · SMS + calls from your own SIM, free · ` : ''}
+    ${pstnConfigured === false ? '📱 Twilio phone calls: not configured. ' + (gwReady ? 'Your Android gateway covers real phone calls free.' : 'Internet calls work now. Add Twilio credentials or pair your Android phone in Devices.') :
+      (pstnConfigured && !twilioReady ? '📱 Connecting to the Twilio phone network…' :
+      (pstnConfigured ? `📱 Twilio live · caller ID <span class="mint">${esc(pstnCallerId)}</span> · carrier rates apply` : ''))}
+  </p>`;
+}
+
+/* keypad wiring: taps append to the dial string and refresh route UI in place */
+function wireDialKeys() {
+  const wrap = document.getElementById('dial-display');
+  if (!wrap) return;
+  document.querySelectorAll('.key').forEach(k => {
+    k.addEventListener('click', () => dialEdit((dial || '') + k.dataset.digit));
+  });
+}
+/* central dial-string editor: updates input, estimate and call button without a full re-render */
+function dialEdit(v) {
+  dial = v;
+  const inp = document.getElementById('dial-input');
+  if (inp) { inp.value = dial; inp.focus(); }
+  updateEstimate();
+  // refresh the Route card honestly (gateway/pstn state may have flipped the route)
+  const est = document.getElementById('estimate');
+  if (est) est.innerHTML = estimateFor(dial);
+  const btn = document.getElementById('btnCall');
+  if (btn) { if (canCall(dial)) btn.removeAttribute('disabled'); else btn.setAttribute('disabled', ''); }
+  const dels = document.querySelectorAll('.main .btn-ghost.tiny');
+  dels.forEach(b => { if (b.textContent.includes('⌫') || b.textContent.includes('Clear')) b.disabled = !dial.length; });
 }
 
 function onCallClick() {
@@ -1106,30 +1329,31 @@ function tabSms() {
   const ready = !!gatewayOnline;
   const len = (smsBody || '').length;
   return `
-  <div class="card">
-    <div class="row between"><h2>SMS <span class="tiny">via your Android</span></h2><button class="btn btn-ghost" onclick="refreshSms()">↻</button></div>
-    ${ready
-      ? `<p class="tiny" style="margin:0 0 10px">Sent and received from <span class="mint">${esc(gatewayOnline.sim_number || gatewayOnline.name || 'your SIM')}</span> — real SMS, your number, free (carrier SMS rates may apply on the SIM plan).</p>`
-      : '<p class="muted">No gateway device online. Pair your Android phone in the Devices tab to send and receive SMS from your own number.</p>'}
-    <label class="label">To</label>
-    <input class="input" id="sms-to" placeholder="+995599123456" value="${esc(smsTo)}" oninput="smsTo=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('sms-body').focus()}" ${ready ? '' : 'disabled'} autocomplete="off">
-    <label class="label">Message</label>
-    <textarea class="input" id="sms-body" rows="3" placeholder="Type your message… (Enter to send, Shift+Enter for a new line)" oninput="smsBody=this.value;smsCount()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendSms()}" ${ready ? '' : 'disabled'}>${esc(smsBody)}</textarea>
-    <div class="charcount" id="charcount">${len}/1600</div>
-    <button class="btn btn-primary" style="width:100%;margin-top:10px" ${ready ? '' : 'disabled'} onclick="sendSms()">Send SMS</button>
-    <div id="app-err"></div>
-    <div style="margin-top:16px">
+  <div class="grid2" style="grid-template-columns:1fr 1.4fr">
+    <div class="card">
+      <h2>New message</h2>
+      ${ready
+        ? `<p class="tiny" style="margin:0 0 10px">From <span class="mint">${esc(gatewayOnline.sim_number || gatewayOnline.name || 'your SIM')}</span> — real SMS, your number, free (carrier SMS rates may apply on the SIM plan).</p>`
+        : '<div class="banner" style="border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.07);color:#fcd34d">No gateway device online. Pair your Android phone in <strong>Devices</strong> to send and receive SMS from your own number.</div>'}
+      <label class="label">To</label>
+      <input class="input" id="sms-to" placeholder="+995599123456" value="${esc(smsTo)}" oninput="smsTo=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('sms-body').focus()}" ${ready ? '' : 'disabled'} autocomplete="off">
+      <label class="label">Message</label>
+      <textarea class="input" id="sms-body" rows="4" placeholder="Type your message… (Enter to send, Shift+Enter for a new line)" oninput="smsBody=this.value;smsCount()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendSms()}" ${ready ? '' : 'disabled'}>${esc(smsBody)}</textarea>
+      <div class="charcount" id="charcount">${len}/1600</div>
+      <button class="btn btn-primary" style="width:100%;margin-top:10px" ${ready ? '' : 'disabled'} onclick="sendSms()">Send SMS →</button>
+    </div>
+    <div class="card">
+      <div class="row between"><h2>Inbox</h2><button class="btn btn-ghost tiny" onclick="refreshSms()">↻ Refresh</button></div>
       ${smsList.length === 0 ? '<p class="muted">No messages yet.</p>' : smsList.map(m => `
       <div class="contact">
-        <div>
+        <div style="min-width:0">
           <strong>${m.direction === 'inbound' ? '← ' : '→ '}<a href="#" onclick="event.preventDefault();smsTo='${esc(m.direction === 'inbound' ? (m.from_number || '') : (m.to_number || ''))}';renderApp();setTimeout(()=>document.getElementById('sms-to')&&document.getElementById('sms-to').focus(),0)" style="text-decoration:none">${esc(m.direction === 'inbound' ? (m.from_number || '?') : (m.to_number || '?'))}</a></strong>
           <div style="margin-top:2px">${esc(m.body)}</div>
           <div class="tiny" style="margin-top:2px">${smsPill(m)} · ${relTime(m.created_at)}${m.error ? ' · <span style="color:#fca5a5">' + esc(m.error) + '</span>' : ''}</div>
         </div>
       </div>`).join('')}
     </div>
-  </div>
-  ${tabsHtml()}`;
+  </div>`;
 }
 function smsCount() {
   const el = document.getElementById('charcount'); if (!el) return;
@@ -1166,8 +1390,7 @@ function tabDevices() {
       <div class="tiny" style="margin-top:6px">Open the OpenCall Gateway app on your Android → type this code → Pair. Valid 15 minutes, single use.
      Expires in ${Math.max(0, Math.ceil((15 * 60000 - (Date.now() - pairingAt)) / 60000))} min.</div>
     </div>` : ''}
-  </div>
-  ${tabsHtml()}`;
+  </div>`;
 }
 
 /* ---------------- Connect tab: let other apps use your number ---------------- */
@@ -1277,8 +1500,7 @@ function tabConnect() {
       ? '<p class="muted">Create an API key above — copy-paste examples with your key filled in will appear here.</p>'
       : connectDocs(selRef)}
     ${active.length && !freshApiKey ? '<p class="tiny" style="margin:10px 0 0">💡 Keys are shown only once at creation. To get copy-paste examples with a real key, mint a fresh one above.</p>' : ''}
-  </div>
-  ${tabsHtml()}`;
+  </div>`;
 }
 
 function tabContacts() {
@@ -1294,14 +1516,13 @@ function tabContacts() {
         </div>
         <button class="btn btn-primary" onclick="dialUser('${esc(c.internet_identity)}')">Call</button>
       </div>`).join('')}
-  </div>
-  ${tabsHtml()}`;
+  </div>`;
 }
 
 function tabHistory() {
   return `
   <div class="card">
-    <div class="row between"><h2>History</h2><button class="btn btn-ghost" onclick="refreshHistory()">↻</button></div>
+    <div class="row between"><h2>History</h2><button class="btn btn-ghost tiny" onclick="refreshHistory()">↻ Refresh</button></div>
     ${history.length === 0 ? '<p class="muted">No calls yet.</p>' : `
     <table><thead><tr><th>With</th><th>Route</th><th>Status</th><th>Duration</th></tr></thead><tbody>
     ${history.map(h => {
@@ -1317,8 +1538,7 @@ function tabHistory() {
         <td>${h.duration_seconds ? fmtDur(h.duration_seconds) : '—'}</td>
       </tr>`; }).join('')}
     </tbody></table>`}
-  </div>
-  ${tabsHtml()}`;
+  </div>`;
 }
 
 function tabLinks() {
@@ -1328,8 +1548,7 @@ function tabLinks() {
     <p class="muted">Anyone with the link can call you from their browser — no account, works over the public internet.</p>
     <button class="btn btn-primary" onclick="createGuestLink()">Create guest link</button>
     <div id="guest-out" style="margin-top:12px"></div>
-  </div>
-  ${tabsHtml()}`;
+  </div>`;
 }
 
 /* ---------------- UI helpers ---------------- */
@@ -1461,15 +1680,23 @@ async function guestJoin(token) {
 function renderGuestIdle() {
   if (!guestCtx || !guestCtx.host) return;
   const data = guestCtx.host;
+  const initial = (data.hostName || '?').trim().charAt(0).toUpperCase();
   root.innerHTML = `
-  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:96vh">
-    <div class="card" style="width:100%;max-width:420px;text-align:center">
-      <h1 style="margin-bottom:4px">OpenCall <span class="mint">AI</span> — guest</h1>
-      <p class="muted">You are calling <strong>${esc(data.hostName)}</strong> (<span class="mint">${esc(data.hostIdentity)}</span>).<br>Free internet audio call. Your browser will ask for microphone access.</p>
-      <input class="input" id="g-name" placeholder="Your name (optional)" style="margin:10px 0">
-      <button class="btn btn-primary" style="width:100%" id="g-go">📞 Join call</button>
+  <div class="authwrap">
+    <div class="authcard" style="text-align:center">
+      <div class="guestavatar">${esc(initial)}</div>
+      <span class="guestbadge">🌐 Free internet call · guest mode</span>
+      <h1 style="font-size:1.3rem">Call ${esc(data.hostName)}</h1>
+      <p class="tagline" style="margin-bottom:0"><span class="mint">${esc(data.hostIdentity)}</span> on OpenCall AI</p>
+      <div class="guesthint">
+        <div><span class="ic">🎙️</span>Your browser will ask for microphone access — allow it to talk.</div>
+        <div><span class="ic">⚡</span>Runs on the internet. No app install, no account needed.</div>
+      </div>
+      <label class="label" style="text-align:left">Your name</label>
+      <input class="input" id="g-name" placeholder="Anonymous (optional)" style="margin-bottom:14px">
+      <button class="btn btn-primary" style="width:100%;padding:12px" id="g-go">📞 Join call</button>
       <div id="g-status" style="margin-top:12px"></div>
-      <p class="tiny" style="margin-top:12px"><a href="./">← Landing page</a></p>
+      <p class="authfoot">Powered by OpenCall AI · <a href="./">what is this?</a></p>
     </div>
   </div>`;
   document.getElementById('g-go').onclick = () => guestStart();
@@ -1506,18 +1733,28 @@ function guestOnStatus(status) {
 
 function renderGuestActive() {
   const listenOnly = !!call.stateNote && call.stateNote.includes('listen-only');
+  const elapsed = call.startedAt ? Math.floor((Date.now() - call.startedAt) / 1000) : 0;
   root.innerHTML = `
-  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:96vh">
-    <div class="card" style="width:100%;max-width:420px;text-align:center">
-      <h2>🔴 On call with ${esc(call.remoteName)}</h2>
-      <p class="tiny">quality: <span class="qdot ${call.quality}"></span> <span class="qlabel">${call.quality === 'unknown' ? 'connecting…' : call.quality}</span> · rtt <span class="rtt">${call.rttMs ?? '…'}</span> ms</p>
-      ${call.stateNote ? `<p class="tiny micnote" style="color:#b45309">${esc(call.stateNote)}</p>` : ''}
-      <div class="row" style="justify-content:center">
-        ${listenOnly ? '<button class="btn btn-ghost" onclick="retryMic(this)">Retry mic</button>' : ''}
-        <button class="btn btn-danger" onclick="hangup()">End call</button>
-      </div>
+  <div class="callstage">
+    <div class="route">${esc(call.routeNote || 'FREE INTERNET · guest link')}</div>
+    <div class="quality"><span class="qdot ${call.quality}"></span> <span class="qlabel">${call.quality === 'unknown' ? 'connecting…' : call.quality}</span> · rtt <span class="rtt">${call.rttMs ?? '…'}</span> ms</div>
+    <div class="ring">🎧</div>
+    <h3>${esc(call.remoteName)}</h3>
+    <p class="cstate">${call.phase === 'ringing' ? 'Ringing…' : 'Connected · ' + fmtDur(elapsed)}</p>
+    <p class="timers">${call.stateNote ? `<span style="color:#fbbf24">🎙️ ${esc(call.stateNote)}</span>` : ''}</p>
+    <div class="cbtns">
+      ${listenOnly ? '<button class="cbig ctrl" onclick="retryMic(this)">🎙️</button>' : ''}
+      <button class="cbig end" onclick="hangup()">✕</button>
     </div>
   </div>`;
+  if (window.__guestTick) clearInterval(window.__guestTick);
+  window.__guestTick = setInterval(() => {
+    const el = document.querySelector('.callstage .cstate');
+    if (!el) { clearInterval(window.__guestTick); window.__guestTick = null; return; }
+    if (call && call.phase === 'active' && call.startedAt) {
+      el.textContent = 'Connected · ' + fmtDur(Math.floor((Date.now() - call.startedAt) / 1000));
+    }
+  }, 1000);
 }
 
 /* guest media: guest is the offerer; everything rides the durable events path */

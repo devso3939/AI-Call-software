@@ -11,14 +11,32 @@ android {
         applicationId = "app.opencall.gateway"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
+    }
+
+    // Consistent release signing: every build uses the SAME committed keystore,
+    // so updates install over previous versions without signature conflicts.
+    // This is what stops Play Protect flagging / "app not installed" errors.
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file("keystore/opencall-gateway-release.keystore")
+            storePassword = "OpenCallGw2026"
+            keyAlias = "opencall-gateway"
+            keyPassword = "OpenCallGw2026"
+        }
     }
 
     buildTypes {
+        debug {
+            // Debug builds also use the SAME key so a debug→release transition
+            // (and any future debug build) never produces a signature mismatch.
+            signingConfig = signingConfigs.getByName("release")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     buildFeatures { buildConfig = true }
