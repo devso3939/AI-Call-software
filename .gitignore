@@ -1,0 +1,41 @@
+# dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# build outputs
+.next/
+dist/
+out/
+coverage/
+.vitest/
+
+# secrets — NEVER commit
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+
+# local runtime data
+data/
+*.sqlite
+*.sqlite3
+*.db
+!packages/db/src/migrations/*.sql
+
+# livekit binary (downloaded, never vendored)
+infra/livekit/bin/
+
+# local-only docs with resource identifiers
+docs/EXTERNAL_RESOURCES.local.md
+
+# logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

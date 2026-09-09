@@ -1,0 +1,21 @@
+{
+  "name": "opencall-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCall AI — open-source, self-hostable, Internet-first calling platform with local AI voice agents",
+  "license": "Apache-2.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "typecheck:api": "tsc --noEmit -p apps/api",
+    "test:api": "npm run test -w apps/api",
+    "bootstrap:agent": "python -m venv services/agent-runtime/.venv && services/agent-runtime/.venv/Scripts/python -m pip install -r services/agent-runtime/requirements.txt"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
