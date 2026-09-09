@@ -8,6 +8,9 @@ on:
       - '.github/workflows/android-gateway.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,9 +43,39 @@ jobs:
             gradle :app:assembleDebug --no-daemon
           fi
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+      # Give the APK a stable filename so the download URL never changes:
+      #   https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway-debug.apk
+      - name: Rename APK to stable filename
+        run: |
+          cd app/build/outputs/apk/debug
+          for f in *.apk; do
+            [ -e "$f" ] || continue
+            case "$f" in opencall-gateway-debug.apk) continue;; esac
+            cp "$f" opencall-gateway-debug.apk
+          done
+          ls -la
+
+      # Rolling "latest" release: every build REPLACES the single latest release,
+      # so the URL above ALWAYS serves the newest APK no matter how often the
+      # app is updated. No version bumps or link edits needed, ever.
+      - name: Publish to rolling 'latest' release
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
         with:
-          name: opencall-gateway-debug-apk
-          path: apps/android-gateway/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          tag_name: latest
+          name: OpenCall Gateway — latest APK
+          body: |
+            **Always up to date.** This release is replaced automatically on every
+            build, so the download link always gives you the newest
+            OpenCall Gateway APK.
+
+            ### Install
+            1. Download `opencall-gateway-debug.apk` on your Android phone
+            2. Allow "install unknown apps" when prompted
+            3. Open the app → enter the 6-digit pairing code from the web app's **Devices** tab → Pair
+            4. Tap **Start gateway**
+
+            ### Web app
+            https://devso3939.github.io/AI-Call-software/app.html
+          files: apps/android-gateway/app/build/outputs/apk/debug/opencall-gateway-debug.apk
+          fail_on_unmatched_files: true

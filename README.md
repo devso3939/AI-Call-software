@@ -2,7 +2,29 @@
 
 Open-source, self-hostable, **Internet-first** calling platform: browser↔browser and human↔AI calls that are effectively free, with SIP and PSTN as explicit, optional, honestly-priced fallbacks.
 
+**Live web app** → [devso3939.github.io/AI-Call-software/app.html](https://devso3939.github.io/AI-Call-software/app.html) · **Landing page** → [devso3939.github.io/AI-Call-software](https://devso3939.github.io/AI-Call-software/)
+
+<!-- always-fresh links: the rolling 'latest' release is replaced on every build -->
+[![Latest APK](https://img.shields.io/badge/⬇️_Android_APK-latest_release-10b981?style=for-the-badge)](https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway-debug.apk)
+[![Web app](https://img.shields.io/badge/🌐_web_app-live-22d3ee?style=for-the-badge)](https://devso3939.github.io/AI-Call-software/app.html)
+![Tests](https://img.shields.io/badge/regression-52%2F52_pass-34d399) ![Backend](https://img.shields.io/badge/backend-Supabase_PostgREST-3ecf8e) ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+
 > Governed by the master build prompt (see repo history / provided specification). Core rules: no fake calls, no fake buttons, no telecom bypass, PSTN disabled until legitimately configured, local AI by default.
+
+## Android gateway app (SIM gateway)
+
+A spare Android phone + its SIM = your **free cellular gateway** for real calls and SMS:
+
+**[⬇️ Download the latest APK](https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway-debug.apk)** — that link *never changes*: every app update replaces the `latest` release automatically, so it always serves the newest build. Full details in [`apps/android-gateway/README.md`](apps/android-gateway/README.md).
+
+1. Install the APK (allow "install unknown apps")
+2. Web app → **Devices** tab → create a 6-digit pairing code
+3. App → enter code → **Pair** → **Start gateway**
+4. Your number is now usable from the web app **and from any external app** via the Connect tab API
+
+## OpenCall Connect — external API
+
+Once your number is connected, **other web apps and services can use it**: mint an API key in the **Connect** tab and send SMS or place real cellular calls with a single POST (no SDK, works from Zapier/n8n/Make/any server). Migrations `008_external_api.sql` + `009_web_signaling.sql` provide the endpoints (`api_status`, `api_send_sms`, `api_get_sms`, `api_place_call`, `api_get_call`, `api_post_signal`, `api_get_signals`) with SHA-256-hashed show-once keys, a 60 req/min rate limit, and *failed requests never count*.
 
 ## Quick start (Windows)
 
