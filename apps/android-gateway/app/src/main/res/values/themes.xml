@@ -1,0 +1,6 @@
+<resources>
+  <style name="Theme.OpenCall" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <item name="android:statusBarColor">#0b1220</item>
+    <item name="android:windowBackground">#0b1220</item>
+  </style>
+</resources>

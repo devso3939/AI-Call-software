@@ -1,0 +1,1350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenCall AI — Live Web App</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.18.4/dist/twilio.min.js"></script>
+<style>
+  :root{
+    --ink950:#0b0f17;--ink900:#10151f;--ink800:#171e2c;--ink700:#202a3d;--ink600:#2b3850;
+    --mint:#10b981;--mint400:#34d399;--mint600:#059669;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink950);color:#e2e8f0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+  main{max-width:640px;margin:0 auto;padding:16px 16px 96px}
+  h1{font-size:1.25rem;margin:0}
+  h2{font-size:1rem;margin:0 0 8px}
+  .card{border-radius:16px;border:1px solid var(--ink700);background:var(--ink900);padding:20px}
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .row.between{justify-content:space-between}
+  .muted{color:#94a3b8;font-size:.85rem}
+  .tiny{font-size:.75rem;color:#64748b}
+  .mint{color:var(--mint400)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:12px;padding:10px 16px;font-size:.9rem;font-weight:600;cursor:pointer;border:1px solid transparent;transition:background .15s}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn-primary{background:var(--mint);color:var(--ink950)}
+  .btn-primary:hover:not(:disabled){background:var(--mint400)}
+  .btn-ghost{background:var(--ink800);border-color:var(--ink600);color:#cbd5e1}
+  .btn-ghost:hover:not(:disabled){background:var(--ink700)}
+  .btn-danger{background:#dc2626;color:#fff}
+  .btn-danger:hover{background:#ef4444}
+  .input{width:100%;border-radius:12px;border:1px solid var(--ink600);background:var(--ink800);padding:10px 12px;color:#e2e8f0;font-size:.95rem;outline:none}
+  .input:focus{border-color:var(--mint600)}
+  .label{display:block;font-size:.75rem;color:#94a3b8;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.05em}
+  .banner{border-radius:12px;border:1px solid rgba(52,211,153,.4);background:rgba(23,30,44,.9);padding:12px 14px;font-size:.85rem;margin-bottom:12px}
+  .err{border-radius:10px;background:rgba(127,29,29,.55);padding:10px 12px;font-size:.85rem;color:#fecaca;margin:10px 0}
+  table{width:100%;border-collapse:collapse;font-size:.85rem}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--ink700)}
+  th{color:#94a3b8;font-weight:500;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em}
+  .pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:.72rem;font-weight:600}
+  .pill.completed{background:rgba(16,185,129,.15);color:var(--mint400)}
+  .pill.ringing,.pill.active,.pill.answered{background:rgba(52,211,153,.25);color:var(--mint400)}
+  .pill.failed,.pill.cancelled,.pill.rejected,.pill.no_answer{background:rgba(220,38,38,.15);color:#fca5a5}
+  .contact{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--ink700);border-radius:12px;background:var(--ink800);padding:10px 12px;margin-bottom:8px}
+  .tabs{display:flex;gap:6px;margin:14px 0}
+  .tabs button{flex:1;border-radius:10px;border:1px solid var(--ink600);background:var(--ink800);color:#94a3b8;padding:8px 4px;font-size:.8rem;font-weight:600;cursor:pointer}
+  .tabs button.on{background:var(--mint);color:var(--ink950);border-color:var(--mint)}
+  .bigcall{position:fixed;left:0;right:0;bottom:0;background:var(--ink900);border-top:1px solid var(--ink700);padding:16px;box-shadow:0 -8px 30px rgba(0,0,0,.5);z-index:50}
+  .qdot{width:10px;height:10px;border-radius:999px;background:#64748b;display:inline-block}
+  .qdot.excellent{background:var(--mint400)}
+  .qdot.good{background:#fbbf24}
+  .qdot.poor{background:#ef4444}
+  a{color:var(--mint400)}
+  .pulse{animation:pulse 1.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+</style>
+</head>
+<body>
+<main id="root"></main>
+<audio id="remoteAudio" autoplay></audio>
+
+<script>
+/* ============================================================
+   OpenCall AI — cloud edition v6 (static SPA on GitHub Pages)
+   Backend:   Supabase (Auth + Postgres RPCs + Realtime)
+   Media:     browser-to-browser WebRTC audio (real, P2P)
+   ON-NET:    free internet calls between OpenCall users + guests
+   PSTN:      Twilio Voice SDK 2.x → real phone numbers over
+              cellular networks. Access token minted server-side
+              in Postgres (secrets never touch the browser);
+              TwiML App webhook dials the PSTN number.
+   GATEWAY:   your own Android phone = free SMS + free real
+              cellular calls on your own number, international.
+              The phone pairs with a 6-digit code, long-polls a
+              command queue (send_sms / dial_call / answer_call /
+              end_call) and bridges call audio acoustically
+              (speaker + mic + hardware AEC) into this browser
+              over WebRTC. Signaling rides the durable calls_events
+              table: the phone reads it with its device secret and
+              posts back under the zero-uuid gateway sender.
+   Signaling: persistent broadcast room per call + durable
+              calls_events table polled until ICE connects.
+              Non-trickle ICE (SDP carries candidates) so a
+              single delivered message is enough to connect.
+   ============================================================ */
+
+const SUPABASE_URL = 'https://ijrfqjxdajgoaysazxle.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_Af8dsVLpjtO6Mpe3zpmI9Q_odky49Fh';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* guest pages run their own sessionless client: a visitor who happens to be
+   signed in on this origin must never leak their identity into a guest call */
+let sbGuest = null;
+function activeSb() { return me ? sb : (guestCtx && guestCtx.sb) ? guestCtx.sb : sb; }
+
+const root = document.getElementById('root');
+const remoteAudio = document.getElementById('remoteAudio');
+
+const RING_TIMEOUT_S = 45;
+
+let me = null;               // profile {id, username, displayName, internetIdentity}
+let contacts = [];
+let history = [];
+let incoming = null;         // {callId, fromName, fromId, isGuest}
+let call = { callId:null, phase:'idle', remoteName:'', peerId:null, isGuest:false,
+             quality:'unknown', rttMs:null, startedAt:null, routeNote:'', role:null };
+let pc = null;
+let localStream = null;
+let liveChannel = null;      // postgres_changes + personal broadcast
+let roomChannel = null;      // per-call signaling broadcast room
+let eventSeq = 0;            // durable events cursor
+let pollTimer = null;
+let ringTimeout = null;
+let statsTimer = null;
+let bootPoll = null;
+let realtimeReady = false;
+let muteState = false;
+let tab = 'dialer';
+let dial = '';
+
+/* PSTN (Twilio Voice SDK) */
+let twilioDevice = null;         // Twilio.Device instance, registered once per session
+let twilioReady = false;         // device.register() succeeded
+let pstnConfigured = null;       // null = unknown, true/false from RPC
+let pstnCallerId = '';           // read-only display of the outbound caller id
+let activeTwilioCall = null;     // current Twilio Call object (when call.isPstn)
+
+/* SIM gateway (your paired Android = free SMS + cellular calls) */
+let gatewayDevices = [];         // rows from list_gateway_devices()
+let gatewayOnline = null;        // best online device row, or null
+let smsList = [];                // recent sms_messages rows
+let smsTo = '';
+let smsBody = '';
+let pairingCode = null;          // 6-digit code waiting to be typed into the app
+let pairingAt = 0;
+let forceTwilio = false;         // route override when both gateway + Twilio are up
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------------- boot / auth ---------------- */
+async function boot() {
+  const { data } = await sb.auth.getSession();
+  if (data.session) {
+    const p = await loadProfile(data.session.user.id);
+    if (p) { await enterApp(p); return; }
+  }
+  renderLogin();
+}
+
+async function loadProfile(uid) {
+  const { data, error } = await sb.from('profiles').select('*').eq('id', uid).maybeSingle();
+  if (error || !data) return null;
+  return { id: data.id, username: data.username, displayName: data.display_name, internetIdentity: data.internet_identity };
+}
+
+async function doLogin(email, password) {
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) return error.message;
+  const { data } = await sb.auth.getSession();
+  const p = await loadProfile(data.session.user.id);
+  if (!p) return 'Profile not found for this user — try registering again.';
+  await enterApp(p);
+  return null;
+}
+
+async function doRegister(email, password, displayName) {
+  const { error } = await sb.auth.signUp({ email, password, options: { data: { display_name: displayName } } });
+  if (error) return error.message;
+  let p = null;
+  for (let i = 0; i < 5 && !p; i++) {
+    await new Promise(r => setTimeout(r, 400));
+    const s = (await sb.auth.getSession()).data.session;
+    if (s) p = await loadProfile(s.user.id);
+  }
+  if (!p) return 'Account created but profile is not ready yet — sign in again in a moment.';
+  await enterApp(p);
+  return null;
+}
+
+async function logout() {
+  await sb.auth.signOut();
+  location.hash = '';
+  location.reload();
+}
+
+async function enterApp(p) {
+  me = p;
+  renderApp();
+  await Promise.all([refreshHistory(), refreshContacts()]);
+  wireRealtime();
+  sweep();
+  setInterval(sweep, 30000);
+  // live seconds display while a call banner is on screen (cheap: only when ringing/active)
+  setInterval(() => { if (['ringing','active','dialing'].includes(call.phase) || (tab === 'devices' && pairingCode)) renderApp(); }, 1000);
+  startBootPoll();
+  document.addEventListener('click', () => { remoteAudio.play().then(() => {}, () => {}); }, { once: true });
+  setupPstn();          // check config + register the Twilio device (no-op when PSTN is not configured)
+  refreshDevices();     // SIM gateway device list + online status
+  refreshSms();         // recent SMS threads
+}
+
+/* ---------------- PSTN: real phone calls (Twilio Voice) ----------------
+   The access token is minted inside Postgres — Twilio credentials never
+   reach the browser. The token binds our TwiML App; Twilio calls its
+   webhook, which returns <Dial callerId><Number>{{To}}</Number></Dial>. */
+async function setupPstn() {
+  try {
+    const { data: cfgOk } = await sb.rpc('pstn_configured');
+    pstnConfigured = !!cfgOk;
+    if (!pstnConfigured) { renderApp(); return; }
+    const { data: cid } = await sb.rpc('pstn_caller_id');
+    pstnCallerId = cid || '';
+    renderApp();
+    await ensureTwilioDevice();
+  } catch (e) { pstnConfigured = false; }
+}
+
+async function ensureTwilioDevice() {
+  if (!pstnConfigured || twilioDevice) return twilioDevice;
+  if (typeof Twilio === 'undefined' || !Twilio.Device) { showToast('Voice SDK failed to load — phone calls unavailable'); return null; }
+  const { data: token, error } = await sb.rpc('twilio_voice_token');
+  if (error || !token) { showToast('Could not get a phone-call token: ' + honestError(error)); return null; }
+  twilioDevice = new Twilio.Device(token, {
+    codecPreferences: ['opus', 'pcmu'],
+    allowIncomingWhileBusy: false,
+    closeProtection: false
+  });
+  twilioDevice.on('registered', () => { twilioReady = true; renderApp(); });
+  twilioDevice.on('error', (err) => {
+    console.warn('twilio error', err);
+    if (call.isPstn && call.phase !== 'idle') {
+      setError('Phone error: ' + (err && err.message ? err.message : 'unknown'));
+      endPstnCall('failed');
+    } else showToast('Phone error: ' + (err && err.message ? err.message : 'unknown'));
+  });
+  twilioDevice.on('tokenWillExpire', async () => {
+    try {
+      const { data: t } = await sb.rpc('twilio_voice_token');
+      if (t) await twilioDevice.updateToken(t);
+    } catch {}
+  });
+  twilioDevice.on('incoming', (c) => handleTwilioIncoming(c));   // inbound PSTN→browser (future use)
+  await twilioDevice.register();
+  return twilioDevice;
+}
+
+function wireTwilioCall(c) {
+  activeTwilioCall = c;
+  c.on('ringing', () => {
+    if (call.isPstn && call.phase === 'dialing') { call.phase = 'ringing'; renderApp(); sb.rpc('update_pstn_call', { p_call_id: call.callId, p_event: 'ringing', p_call_sid: c.parameters && c.parameters.CallSid }).then(() => {}, () => {}); }
+  });
+  c.on('accept', () => {
+    if (call.isPstn) {
+      clearTimeout(ringTimeout); ringTimeout = null;
+      call.phase = 'active'; call.startedAt = Date.now();
+      call.remoteStream = c.getRemoteStream ? c.getRemoteStream() : null;
+      if (call.remoteStream) { remoteAudio.srcObject = call.remoteStream; remoteAudio.play().catch(() => {}); }
+      renderApp();
+      sb.rpc('update_pstn_call', { p_call_id: call.callId, p_event: 'answered', p_call_sid: c.parameters && c.parameters.CallSid }).then(() => {}, () => {});
+    }
+  });
+  c.on('disconnect', () => { if (call.isPstn) endPstnCall('ended'); });
+  c.on('warning', (n) => { if (call.isPstn) call.stateNote = 'network warning: ' + n; renderApp(); });
+  c.on('warning-cleared', () => { if (call.isPstn) { call.stateNote = ''; renderApp(); } });
+}
+
+/* place a real phone call: DB row first (honest record), then Twilio dials the number */
+async function placePstnCall(e164) {
+  const dest = e164.replace(/[\s()-]/g, '');
+  if (!/^\+[1-9][0-9]{5,15}$/.test(dest)) { setError('Enter the number in international format, e.g. +995599123456'); return; }
+  setError('');
+  const { data, error } = await sb.rpc('place_call', { p_destination: dest, p_mode: 'human' });
+  if (error) { setError(honestError(error)); renderApp(); return; }
+  call = { callId: data.id, phase: 'dialing', remoteName: dest, peerId: null, isGuest: false, isPstn: true,
+           quality: 'unknown', rttMs: null, startedAt: Date.now(), routeNote: 'PSTN · real phone call · carrier rates apply', role: 'caller' };
+  renderApp();
+  try { await ensureTwilioDevice(); } catch (e) { /* error handler covers it */ }
+  if (!twilioDevice) { setError('Phone calls are not ready — PSTN may not be configured'); endPstnCall('failed'); return; }
+  try {
+    const c = await twilioDevice.connect({ params: { To: dest } });
+    if (!c) throw new Error('Twilio returned no call');
+    wireTwilioCall(c);
+    // honest no-answer cap: if nobody picks up in 45 s, hang up (matches ON-NET behavior)
+    ringTimeout = setTimeout(() => { if (call.phase !== 'active') { try { activeTwilioCall && activeTwilioCall.disconnect(); } catch {} endPstnCall('no answer after 45 s'); } }, RING_TIMEOUT_S * 1000);
+  } catch (e) {
+    setError('Could not start the phone call: ' + (e && e.message ? e.message : e));
+    endPstnCall('failed');
+  }
+}
+
+async function endPstnCall(reason) {
+  clearTimeout(ringTimeout); ringTimeout = null;
+  const dur = call.startedAt ? Math.round((Date.now() - call.startedAt) / 1000) : 0;
+  const id = call.callId;
+  const wasActive = call.phase === 'active';
+  if (activeTwilioCall) { try { activeTwilioCall.disconnect(); } catch {} activeTwilioCall = null; }
+  call = { callId:null, phase:'idle', remoteName:'', peerId:null, isGuest:false, isPstn:false,
+           quality:'unknown', rttMs:null, startedAt:null, routeNote:'', role:null };
+  if (me) renderApp();
+  if (id) await sb.rpc('update_pstn_call', { p_call_id: id, p_event: reason === 'ended' && wasActive ? 'completed' : 'failed', p_duration: wasActive ? dur : null, p_call_sid: reason === 'ended' && wasActive ? null : ('client:' + reason) }).then(() => {}, () => {});
+  if (me) refreshHistory();
+  showToast(reason === 'ended' ? (dur > 5 ? `Call ended · lasted ${fmtDur(dur)}` : 'Call ended') : `Call ${reason}`);
+}
+
+/* inbound PSTN→browser is possible later via <Dial><Client> — accept/reject UI comes free with the device */
+function handleTwilioIncoming(c) {
+  showToast('Incoming phone call (browser client): ' + (c.parameters && (c.parameters.From || c.parameters.Caller) || 'unknown'));
+  c.reject();   // honest default: we do not present inbound PSTN UI yet
+}
+
+/* ---------------- SIM gateway: your Android = free SMS + cellular calls ----------------
+   The paired phone long-polls a command queue; calls bridge audio acoustically
+   (speaker + mic + hardware AEC) into this browser over WebRTC. Signaling rides
+   the durable calls_events table — the phone reads it with its device secret and
+   posts back under the zero-uuid gateway sender, which this browser never mistakes
+   for its own echo. */
+async function refreshDevices() {
+  const { data, error } = await sb.rpc('list_gateway_devices');
+  if (!error && data) {
+    gatewayDevices = data;
+    const cutoff = Date.now() - 120000;
+    const online = data.filter(d => d.online && d.last_seen_at && (new Date(d.last_seen_at).getTime()) > cutoff);
+    gatewayOnline = online.sort((a, b) => new Date(b.last_seen_at) - new Date(a.last_seen_at))[0] || null;
+    if (gatewayOnline && pairingCode) { pairingCode = null; showToast('Android device paired ✓'); }
+  }
+  if (me) renderApp();
+}
+
+async function refreshSms() {
+  const { data } = await sb.from('sms_messages').select('*').order('created_at', { ascending: false }).limit(50);
+  smsList = data || [];
+  if (me) renderApp();
+}
+
+async function sendSms() {
+  const to = (smsTo || '').trim(), body = (smsBody || '').trim();
+  setError('');
+  if (!to || !body) return setError('Enter a number (+country…) and a message.');
+  const { error } = await sb.rpc('send_sms', { p_to: to, p_body: body });
+  if (error) return setError(honestError(error));
+  smsBody = '';
+  showToast('SMS queued — your phone sends it from your number');
+  refreshSms();
+}
+
+async function startPairing() {
+  setError('');
+  const { data, error } = await sb.rpc('create_pairing_code');
+  if (error) return setError(honestError(error));
+  pairingCode = data; pairingAt = Date.now();
+  renderApp();
+}
+
+async function unpairDevice(id) {
+  await sb.rpc('remove_gateway_device', { p_device_id: id }).then(() => {}, () => {});
+  await refreshDevices();
+}
+
+/* outbound: real cellular call dialed by your Android — free, your caller ID */
+async function placeGatewayCall(e164) {
+  const dest = e164.replace(/[\s()-]/g, '');
+  if (!/^\+[1-9][0-9]{5,15}$/.test(dest)) { setError('Enter the number in international format, e.g. +995599123456'); return; }
+  setError('');
+  const { data, error } = await sb.rpc('request_gateway_call', { p_to: dest });
+  if (error) { setError(honestError(error)); renderApp(); return; }
+  call = { callId: data.id, phase: 'dialing', remoteName: dest, peerId: null, isGuest: false, isGateway: true,
+           quality: 'unknown', rttMs: null, startedAt: Date.now(), routeNote: 'FREE · SIM gateway · your Android dials from your number', role: 'caller' };
+  eventSeq = 0;
+  renderApp();
+  startEventPoll();
+  await startMedia('caller');   // offer waits in calls_events until the phone joins the bridge
+  ringTimeout = setTimeout(async () => {
+    if (call.phase !== 'active') {
+      try { await sb.rpc('queue_end_call', { p_call_id: call.callId }); } catch (e) {}
+      endCallLocal('no answer after 45 s');
+    }
+  }, RING_TIMEOUT_S * 1000);
+}
+
+/* inbound cellular call: answer on the phone itself (talk on the handset) */
+async function answerOnPhone() {
+  if (!incoming) return;
+  const { callId, fromName } = incoming;
+  const { error } = await sb.rpc('queue_answer_call', { p_call_id: callId });
+  if (error) { setError(honestError(error)); return; }
+  stopRing();
+  incoming = null;
+  call = { callId, phase: 'onphone', remoteName: fromName || 'unknown number', peerId: null, isGuest: false, isGateway: true,
+           quality: 'unknown', rttMs: null, startedAt: Date.now(), routeNote: 'answered on your phone · your SIM', role: 'callee' };
+  renderApp();
+}
+
+/* inbound cellular call: answer + bridge the audio into this browser */
+async function answerWithBridge() {
+  if (!incoming) return;
+  const { callId, fromName } = incoming;
+  const { error } = await sb.rpc('queue_answer_call', { p_call_id: callId });
+  if (error) { setError(honestError(error)); return; }
+  stopRing();
+  incoming = null;
+  call = { callId, phase: 'active', remoteName: fromName || 'unknown number', peerId: null, isGuest: false, isGateway: true,
+           quality: 'unknown', rttMs: null, startedAt: Date.now(), routeNote: 'FREE · SIM gateway · audio bridged by your Android phone', role: 'callee' };
+  eventSeq = 0;
+  renderApp();
+  startEventPoll();
+  await startMedia('callee');   // the phone (bridge mode) sends the WebRTC offer
+}
+
+/* join the audio bridge later, from the onphone banner */
+async function joinBridge() {
+  if (!call.callId || !call.isGateway) return;
+  call.phase = 'active';
+  call.startedAt = call.startedAt || Date.now();
+  eventSeq = 0;
+  renderApp();
+  startEventPoll();
+  await startMedia('callee');
+}
+
+async function declineGateway() {
+  if (!incoming) return;
+  stopRing();
+  const id = incoming.callId;
+  incoming = null; renderApp();
+  try { await sb.rpc('queue_end_call', { p_call_id: id }); } catch (e) {}
+}
+
+function gatewayOnStatus(status) {
+  if (!call.callId) return;
+  if (status === 'ringing' && call.phase === 'dialing') { call.phase = 'ringing'; renderApp(); }
+  if (status === 'answered' && (call.phase === 'dialing' || call.phase === 'ringing')) {
+    clearTimeout(ringTimeout); ringTimeout = null;
+    call.phase = 'active';
+    renderApp();
+  }
+  if (['rejected','no_answer','failed','cancelled','completed'].includes(status)) {
+    endCallLocal(status === 'completed' ? 'ended' : status.replace('_', ' '));
+  }
+}
+
+async function endGatewayCall(reason) {
+  clearTimeout(ringTimeout); ringTimeout = null;
+  const id = call.callId;
+  if (id) { try { await sendSignal('bye', {}); } catch (e) {} }
+  endCallLocal(reason);
+  if (id) { try { await sb.rpc('queue_end_call', { p_call_id: id }); } catch (e) {} }
+}
+
+/* ---------------- realtime wiring (user session) ---------------- */
+function wireRealtime() {
+  sb.removeChannel(liveChannel);
+  liveChannel = sb.channel('live-' + me.id)
+    // new call ringing for me
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calls', filter: 'callee_id=eq.' + me.id },
+      (payload) => {
+        const c = payload.new;
+        if (c.status !== 'ringing') return;
+        // a real cellular call is ringing on my SIM (reported by the gateway phone)
+        if (c.direction === 'inbound-pstn' || (c.caller_kind === 'pstn' && c.pstn_to)) {
+          onIncoming(c.id, c.normalized_destination || c.pstn_to || 'unknown number', c.created_by, false, true);
+          return;
+        }
+        onIncoming(c.id, c.caller_kind === 'guest' ? (c.guest_name || 'Guest') : null, c.created_by, c.caller_kind === 'guest');
+      })
+    // updates on calls I created
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calls', filter: 'created_by=eq.' + me.id },
+      (payload) => {
+        if (call.callId && call.callId === payload.new.id) onCallUpdated(payload.new.status);
+        // incoming (not yet accepted) call died (swept/rejected elsewhere) → clear banner
+        if (incoming && incoming.callId === payload.new.id &&
+            ['no_answer','cancelled','rejected','failed','completed'].includes(payload.new.status)) {
+          incoming = null; stopRing(); renderApp();
+        }
+      })
+    // updates on calls I receive
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calls', filter: 'callee_id=eq.' + me.id },
+      (payload) => { if (call.callId && call.callId === payload.new.id) onCallUpdated(payload.new.status); })
+    // SMS via my gateway phone (in + out)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sms_messages', filter: 'user_id=eq.' + me.id },
+      (payload) => {
+        const m = payload.new;
+        smsList = [m, ...smsList].slice(0, 50);
+        showToast(m.direction === 'inbound' ? `💬 SMS from ${m.from_number}: ${m.body.slice(0, 40)}` : `💬 SMS queued to ${m.to_number}`);
+        if (tab === 'sms') renderApp();
+      })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sms_messages', filter: 'user_id=eq.' + me.id },
+      (payload) => {
+        const i = smsList.findIndex(x => x.id === payload.new.id);
+        if (i >= 0) smsList[i] = payload.new; else smsList = [payload.new, ...smsList].slice(0, 50);
+        if (tab === 'sms') renderApp();
+      })
+    // gateway phone presence (online/offline, battery)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'gateway_devices', filter: 'user_id=eq.' + me.id },
+      () => { refreshDevices(); })
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') { realtimeReady = true; stopBootPoll(); }
+    });
+}
+
+/* fallback poll for incoming calls until realtime confirmed */
+function startBootPoll() {
+  stopBootPoll();
+  bootPoll = setInterval(async () => {
+    if (realtimeReady || call.phase !== 'idle' || incoming) return;
+    const { data } = await sb.from('calls')
+      .select('id, created_by, caller_kind, guest_name, status, direction, pstn_to, normalized_destination')
+      .eq('callee_id', me.id).eq('status', 'ringing')
+      .order('created_at', { ascending: false }).limit(1);
+    const c = data && data[0];
+    if (!c) return;
+    if (c.direction === 'inbound-pstn' || (c.caller_kind === 'pstn' && c.pstn_to)) {
+      onIncoming(c.id, c.normalized_destination || c.pstn_to || 'unknown number', c.created_by, false, true);
+      return;
+    }
+    onIncoming(c.id, c.caller_kind === 'guest' ? (c.guest_name || 'Guest') : null, c.created_by, c.caller_kind === 'guest');
+  }, 4000);
+}
+function stopBootPoll() { if (bootPoll) { clearInterval(bootPoll); bootPoll = null; } }
+
+/* ---------------- incoming call ---------------- */
+async function onIncoming(callId, fromName, fromId, isGuest, isGateway) {
+  if (call.phase !== 'idle' || incoming) return;
+  incoming = { callId, fromName: fromName || '', fromId, isGuest: !!isGuest, isGateway: !!isGateway };
+  if (!incoming.fromName && fromId) {
+    resolveName(fromId).then(n => { if (incoming && incoming.callId === callId) { incoming.fromName = n; renderApp(); } });
+  }
+  renderApp();
+  ringIncoming();
+}
+
+let incomingRingSound = null;
+function ringIncoming() {
+  try {
+    if (!incomingRingSound) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator(); const g = ctx.createGain();
+      osc.frequency.value = 440; g.gain.value = 0.04;
+      osc.connect(g); g.connect(ctx.destination); osc.start();
+      incomingRingSound = { ctx, osc };
+      setTimeout(stopRing, 30000);
+    }
+  } catch {}
+}
+function stopRing() {
+  try { if (incomingRingSound) { incomingRingSound.osc.stop(); incomingRingSound.ctx.close(); } } catch {}
+  incomingRingSound = null;
+}
+
+async function resolveName(profileId) {
+  const { data } = await sb.from('profiles').select('display_name').eq('id', profileId).maybeSingle();
+  return data?.display_name || 'User';
+}
+
+function onCallUpdated(status) {
+  if (!call.callId) return;
+  if (call.isGuest) return guestOnStatus(status);
+  if (call.isGateway) return gatewayOnStatus(status);
+  if (status === 'answered' && call.phase === 'ringing' && call.role === 'caller') {
+    clearTimeout(ringTimeout); ringTimeout = null;
+    call.phase = 'active'; call.startedAt = Date.now();
+    renderApp();
+    startMedia('caller');
+  }
+  if (['rejected','no_answer','failed','cancelled','completed'].includes(status)) {
+    endCallLocal(status === 'completed' ? 'ended' : status.replace('_', ' '));
+  }
+}
+
+/* ---------------- signaling ---------------- */
+function sigRoomName(peerId) { return 'sig-' + [me?.id || 'guest', peerId].sort().join('-'); }
+
+/* join (and keep) the per-call broadcast room */
+function joinRoom(peerId) {
+  const room = sigRoomName(peerId);
+  if (roomChannel && roomChannel.topic === room) return Promise.resolve();
+  sb.removeChannel(roomChannel); roomChannel = null;
+  const ch = sb.channel(room, { config: { broadcast: { self: false } } });
+  ch.on('broadcast', { event: 'signal' }, (msg) => {
+    const p = msg.payload || {};
+    if (p.from && p.from === (me?.id || 'guest')) return;   // ignore own
+    handleSignal(p);
+  });
+  roomChannel = ch;
+  return new Promise(res => { ch.subscribe(st => { if (st === 'SUBSCRIBED') res(); }); setTimeout(res, 1500); });
+}
+function leaveRoom() { if (roomChannel) { sb.removeChannel(roomChannel); roomChannel = null; } }
+
+/* unified send: broadcast via room (if any) + durable row via RPC */
+async function sendSignal(kind, data) {
+  if (call.mySender == null) call.mySender = (me ? me.id : '00000000-0000-0000-0000-000000000000');
+  try {
+    if (roomChannel && roomChannel.state === 'joined') {
+      await roomChannel.send({ type: 'broadcast', event: 'signal', payload: { kind, data, callId: call.callId, from: call.mySender, to: call.peerId || null } });
+    }
+  } catch {}
+  try {
+    await activeSb().rpc('post_call_event', { p_call_id: call.callId, p_kind: kind, p_payload: data });
+  } catch {}
+}
+
+function handleSignal(p) {
+  if (!p || !p.kind || !pc) return;
+  if (p.callId && call.callId && p.callId !== call.callId) return;
+  (async () => {
+    try {
+      if (p.kind === 'offer') {
+        // fresh connection setup OR mid-call renegotiation (e.g. peer attached mic via Retry).
+        // glare safety: only take an offer when we are not mid-negotiation ourselves.
+        if (pc.signalingState === 'have-local-offer') return;         // collision — sender may retry
+        if (pc.currentRemoteDescription && pc.remoteDescription.sdp === p.data.sdp) return; // duplicate delivery
+        const isRenego = !!pc.currentRemoteDescription;               // already connected once
+        await pc.setRemoteDescription(new RTCSessionDescription(p.data));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await waitIceGather(pc);
+        await sendSignal('answer', pc.localDescription);
+        if (isRenego) showToast('Peer microphone connected');
+      } else if (p.kind === 'answer') {
+        if (pc.signalingState !== 'have-local-offer') return;         // stale or duplicate answer
+        await pc.setRemoteDescription(new RTCSessionDescription(p.data));
+      } else if (p.kind === 'ice') {
+        if (p.data && p.data.candidate && pc.remoteDescription) { try { await pc.addIceCandidate(new RTCIceCandidate(p.data)); } catch {} }
+      } else if (p.kind === 'bye') {
+        endCallLocal('ended');
+      }
+    } catch (e) { console.warn('signal error', e); }
+  })();
+}
+
+/* wait (briefly) for ICE gathering so SDP carries all candidates — non-trickle */
+function waitIceGather(pconn, ms = 2500) {
+  return new Promise(res => {
+    if (pconn.iceGatheringState === 'complete') return res();
+    const t = setTimeout(res, ms);
+    pconn.addEventListener('icegatheringstatechange', () => {
+      if (pconn.iceGatheringState === 'complete') { clearTimeout(t); res(); }
+    });
+  });
+}
+
+/* durable events drain: runs until ICE connects; also carries call status */
+function startEventPoll() {
+  stopEventPoll();
+  pollTimer = setInterval(async () => {
+    if (!call.callId) { stopEventPoll(); return; }
+    try {
+      const { data, error } = await activeSb().rpc('get_call_events', { p_call_id: call.callId, p_after_seq: eventSeq });
+      if (!error) {
+        for (const ev of (data || [])) {
+          eventSeq = Math.max(eventSeq, ev.seq);
+          const isMine = ev.sender === call.mySender;   // own events (echo) match my sender id
+          if (ev.kind === 'offer') handleSignal({ kind: 'offer', data: ev.payload, callId: call.callId });
+          else if (ev.kind === 'answer') handleSignal({ kind: 'answer', data: ev.payload, callId: call.callId });
+          else if (ev.kind === 'ice' && !isMine) handleSignal({ kind: 'ice', data: ev.payload, callId: call.callId });
+          else if (ev.kind === 'bye') endCallLocal('ended');
+        }
+      }
+      if (call.phase === 'ringing') {
+        const { data: st } = await activeSb().rpc('get_call_status', { p_call_id: call.callId });
+        const row = st && st[0];
+        if (row && row.status !== 'ringing') onCallUpdated(row.status);
+      }
+      if (pc && (pc.connectionState === 'connected') && call.phase === 'ringing') stopEventPoll();
+      // NOTE: during active calls the poll keeps running — it carries mid-call
+      // renegotiation (mic retry) and the bye for broadcast-less guest tabs.
+    } catch {}
+  }, 1200);
+}
+function stopEventPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+/* ---------------- calls (user-to-user) ---------------- */
+async function placeCall(dest) {
+  const d = (dest || dial).trim();
+  if (!d) return;
+  const dst = d.includes('@') ? d.toLowerCase() : d.toLowerCase() + '@opencall';
+  setError('');
+  const { data, error } = await sb.rpc('place_call', { p_destination: dst, p_mode: 'human' });
+  if (error) { setError(honestError(error)); return; }
+  call = { callId: data.id, phase: 'ringing', remoteName: dst, peerId: data.callee_id, isGuest: false,
+           quality: 'unknown', rttMs: null, startedAt: Date.now(), routeNote: 'FREE ON-NET · internet call', role: 'caller' };
+  eventSeq = 0;
+  renderApp();
+  await joinRoom(data.callee_id);   // listen before we ever send
+  startEventPoll();
+  ringTimeout = setTimeout(async () => {
+    if (call.phase === 'ringing') {
+      try { await sb.rpc('no_answer_call', { p_call_id: call.callId }); } catch (e) {}
+      endCallLocal('no answer after 45 s — they may be offline');
+    }
+  }, RING_TIMEOUT_S * 1000);
+}
+
+async function acceptIncoming() {
+  if (!incoming) return;
+  const { callId, fromId, isGuest, fromName } = incoming;
+  stopRing();
+  incoming = null;
+  const { error } = await sb.rpc('answer_call', { p_call_id: callId });
+  if (error) { setError(honestError(error)); renderApp(); return; }
+  call = { callId, phase: 'active', remoteName: fromName || 'Caller', peerId: isGuest ? null : fromId, isGuest: !!isGuest,
+           quality: 'unknown', rttMs: null, startedAt: Date.now(), routeNote: 'FREE ON-NET · internet call', role: 'callee' };
+  eventSeq = 0;
+  renderApp();
+  if (!isGuest) await joinRoom(fromId);
+  await startMedia('callee');
+  startEventPoll();
+}
+
+async function answerIncoming(callId) {
+  // used when banner shows a call whose incoming object was cleared or for re-accept; kept simple
+  const { error } = await sb.rpc('answer_call', { p_call_id: callId });
+  if (error) return setError(honestError(error));
+}
+
+async function rejectIncoming() {
+  if (!incoming) return;
+  stopRing();
+  await sb.rpc('reject_call', { p_call_id: incoming.callId }).then(() => {}, () => {});
+  incoming = null; renderApp();
+}
+
+async function hangup() {
+  if (call.isPstn) return endPstnCall('ended');
+  if (call.isGateway) return endGatewayCall('ended');
+  const id = call.callId, peer = call.peerId, wasGuest = call.isGuest;
+  const hadMedia = !!pc;
+  if (hadMedia) { try { await sendSignal('bye', {}); } catch {} }
+  endCallLocal('ended');
+  if (id) await sb.rpc('hangup_call', { p_call_id: id, p_reason: 'hangup' }).then(() => {}, () => {});
+}
+
+function endCallLocal(reason) {
+  clearTimeout(ringTimeout); ringTimeout = null;
+  clearInterval(statsTimer); statsTimer = null;
+  stopEventPoll();
+  stopRing();
+  leaveRoom();
+  if (pc) { try { pc.close(); } catch {} pc = null; }
+  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  remoteAudio.srcObject = null;
+  muteState = false;
+  const dur = call.startedAt ? Math.round((Date.now() - call.startedAt) / 1000) : 0;
+  call = { callId:null, phase:'idle', remoteName:'', peerId:null, isGuest:false,
+           quality:'unknown', rttMs:null, startedAt:null, routeNote:'', role:null };
+  if (me) renderApp(); else renderGuestIdle();
+  if (me) refreshHistory();
+  showToast(dur > 5 ? `Call ${reason} · lasted ${fmtDur(dur)}` : `Call ${reason}`);
+}
+
+/* ---------------- WebRTC (real P2P audio) ---------------- */
+const RTC_CONFIG = { iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ] };
+
+/* mic acquisition with an honest timeout: a hung device must not stall the call forever */
+function getMic(ms = 15000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (ok, val) => { if (!settled) { settled = true; clearTimeout(timer); resolve(ok ? val : null); } };
+    const timer = setTimeout(() => done(false, 'timeout'), ms);
+    navigator.mediaDevices.getUserMedia({ audio: true, echoCancellation: true, noiseSuppression: true })
+      .then(s => done(true, s))
+      .catch(e => done(false, e && e.name ? e.name : 'error'));
+  });
+}
+
+function wireMicRetry(btn) {
+  btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = 'Trying mic…';
+    const s = await getMic(12000);
+    if (s && pc && call.phase === 'active') {
+      localStream = s;
+      s.getTracks().forEach(t => pc.addTrack(t, s));
+      try {                                   // renegotiate so the peer starts receiving us
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await waitIceGather(pc);
+        await sendSignal('offer', pc.localDescription);
+      } catch {}
+      call.stateNote = '';
+      const q = document.querySelector('.micnote'); if (q) q.textContent = '';
+      renderApp();
+      showToast('Microphone connected');
+    } else {
+      btn.disabled = false; btn.textContent = 'Retry mic';
+      const q = document.querySelector('.micnote'); if (q) q.textContent = 'still no microphone — you are in listen-only mode';
+    }
+  };
+}
+window.retryMic = wireMicRetry;
+
+async function startMedia(role) {
+  localStream = await getMic(15000);
+  if (localStream) {
+    call.stateNote = '';
+  } else {
+    // honest degradation: connect audio anyway so the other side is heard; say exactly what happened
+    call.stateNote = 'no microphone — listen-only (you can hear them, they cannot hear you)';
+  }
+  renderApp();
+  pc = new RTCPeerConnection(RTC_CONFIG);
+  if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+  else pc.addTransceiver('audio', { direction: 'recvonly' });   // valid SDP so listen-only still connects
+  pc.ontrack = (e) => { remoteAudio.srcObject = e.streams[0]; remoteAudio.play().catch(() => {}); };
+  pc.onconnectionstatechange = () => {
+    if (pc && ['failed','disconnected','closed'].includes(pc.connectionState) && call.phase === 'active') {
+      endCallLocal('connection lost');
+    }
+  };
+  pc.onicecandidate = (e) => {
+    // non-trickle main path: candidates ride inside offer/answer SDP.
+    // late candidates still go out, best-effort:
+    if (e.candidate) sendSignal('ice', e.candidate.toJSON());
+  };
+
+  if (role === 'caller') {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await waitIceGather(pc);
+    await sendSignal('offer', pc.localDescription);
+  }
+  // callee: offer arrives via room broadcast or durable poll; answer sent on receipt
+
+  statsTimer = setInterval(async () => {
+    if (!pc) return;
+    try {
+      const stats = await pc.getStats();
+      stats.forEach(s => {
+        if (s.type === 'candidate-pair' && s.state === 'succeeded' && s.currentRoundTripTime != null) {
+          call.rttMs = Math.round(s.currentRoundTripTime * 1000);
+          call.quality = call.rttMs < 150 ? 'excellent' : call.rttMs < 400 ? 'good' : 'poor';
+          updateQualityUI();
+        }
+      });
+    } catch {}
+  }, 4000);
+}
+
+function updateQualityUI() {
+  const q = document.querySelector('.qdot'); if (q) q.className = 'qdot ' + call.quality;
+  const rt = document.querySelector('.rtt'); if (rt) rt.textContent = String(call.rttMs ?? '…');
+  const lbl = document.querySelector('.qlabel'); if (lbl) lbl.textContent = call.quality === 'unknown' ? 'connecting…' : call.quality;
+}
+
+function toggleMute(btn) {
+  muteState = !muteState;
+  if (call.isPstn) {                       // Twilio manages its own mic stream
+    try { if (activeTwilioCall) activeTwilioCall.mute(muteState); } catch {}
+    btn.textContent = muteState ? 'Unmute' : 'Mute';
+    return;
+  }
+  if (!localStream) { muteState = false; return; }
+  localStream.getAudioTracks().forEach(t => t.enabled = !muteState);
+  btn.textContent = muteState ? 'Unmute' : 'Mute';
+}
+
+/* ---------------- history / contacts / sweep ---------------- */
+async function refreshHistory() {
+  if (!me) return;
+  const { data } = await sb.from('calls')
+    .select('id, requested_destination, normalized_destination, status, duration_seconds, created_at, caller_kind, guest_name, created_by, callee_id, route_type')
+    .or(`created_by.eq.${me.id},callee_id.eq.${me.id}`)
+    .order('created_at', { ascending: false })
+    .limit(30);
+  history = data || [];
+  renderApp();
+}
+
+async function refreshContacts() {
+  const { data } = await sb.from('profiles').select('*').neq('id', me.id).order('display_name');
+  contacts = data || [];
+  renderApp();
+}
+
+async function sweep() {
+  await sb.rpc('sweep_no_answer', { p_older_than_seconds: RING_TIMEOUT_S }).then(() => {}, () => {});
+  if (call.phase === 'idle' && !incoming) refreshHistory();
+}
+
+/* ---------------- guest links ---------------- */
+async function createGuestLink() {
+  const { data, error } = await sb.rpc('create_guest_link', { p_expires_minutes: 60, p_single_use: false });
+  if (error) return setError(honestError(error));
+  const url = `${location.origin}${location.pathname}#/guest/${data.token}`;
+  showGuest(url);
+}
+
+/* ---------------- UI: login ---------------- */
+let loginMode = 'login';
+function renderLogin() {
+  document.title = 'OpenCall AI — Sign in';
+  root.innerHTML = `
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:96vh">
+    <div class="card" style="width:100%;max-width:380px">
+      <h1 style="margin-bottom:2px">OpenCall <span class="mint">AI</span></h1>
+      <p class="muted" style="margin:0 0 14px">Real internet calls. Honest routing. ${loginMode === 'login' ? 'Sign in' : 'Create account'}:</p>
+      ${loginMode === 'register' ? `
+        <label class="label">Display name</label>
+        <input class="input" id="f-name" placeholder="Alice" autocomplete="name">` : ''}
+      <label class="label">Email</label>
+      <input class="input" id="f-email" placeholder="you@example.com" autocomplete="email">
+      <label class="label">Password</label>
+      <input class="input" id="f-pass" type="password" placeholder="••••••••" autocomplete="current-password">
+      <div id="login-err"></div>
+      <button class="btn btn-primary" style="width:100%;margin-top:14px" id="f-go">${loginMode === 'login' ? 'Sign in' : 'Create account'}</button>
+      <p class="muted" style="text-align:center;margin:12px 0 0">
+        ${loginMode === 'login' ? 'No account?' : 'Have an account?'}
+        <a href="#" id="f-mode">${loginMode === 'login' ? 'Register' : 'Sign in'}</a>
+      </p>
+      <hr style="border:none;border-top:1px solid var(--ink700);margin:16px 0 12px">
+      <p class="tiny" style="margin:0 0 8px">Demo accounts (password <code>opencall123</code>):<br>alice@opencall.app · bob@opencall.app</p>
+      <div class="row" style="gap:8px">
+        <button class="btn btn-ghost" style="flex:1" id="f-demo-a">Quick login Alice</button>
+        <button class="btn btn-ghost" style="flex:1" id="f-demo-b">Quick login Bob</button>
+      </div>
+      <p class="tiny" style="margin:12px 0 0"><a href="./">← Back to landing page</a></p>
+    </div>
+  </div>`;
+  document.getElementById('f-mode').onclick = (e) => { e.preventDefault(); loginMode = loginMode === 'login' ? 'register' : 'login'; renderLogin(); };
+  document.getElementById('f-go').onclick = async () => {
+    const email = document.getElementById('f-email').value.trim();
+    const pass = document.getElementById('f-pass').value;
+    const name = document.getElementById('f-name')?.value.trim();
+    document.getElementById('login-err').innerHTML = '';
+    const err = loginMode === 'login' ? await doLogin(email, pass) : await doRegister(email, pass, name || email.split('@')[0]);
+    if (err) document.getElementById('login-err').innerHTML = `<div class="err">${esc(err)}</div>`;
+  };
+  document.getElementById('f-demo-a').onclick = () => doLogin('alice@opencall.app', 'opencall123');
+  document.getElementById('f-demo-b').onclick = () => doLogin('bob@opencall.app', 'opencall123');
+}
+
+/* ---------------- UI: app shell ---------------- */
+function renderApp() {
+  document.title = 'OpenCall AI';
+  if (!me) return;
+  const body = tab === 'dialer' ? tabDialer() : tab === 'sms' ? tabSms() : tab === 'devices' ? tabDevices()
+             : tab === 'contacts' ? tabContacts() : tab === 'history' ? tabHistory() : tabLinks();
+  root.innerHTML = `
+    <header class="row between" style="margin-bottom:14px">
+      <div>
+        <h1>OpenCall <span class="mint">AI</span> <span class="tiny">cloud</span></h1>
+        <p class="muted" style="margin:0">${esc(me.displayName)} · <span class="mint">${esc(me.internetIdentity)}</span> · online</p>
+      </div>
+      <button class="btn btn-ghost" onclick="logout()">Sign out</button>
+    </header>
+    ${body}
+    ${callBanner()}
+  `;
+}
+
+function tabsHtml() {
+  return `<div class="tabs">
+    <button class="${tab==='dialer'?'on':''}" onclick="setTab('dialer')">Dialer</button>
+    <button class="${tab==='sms'?'on':''}" onclick="setTab('sms')">SMS</button>
+    <button class="${tab==='devices'?'on':''}" onclick="setTab('devices')">Devices</button>
+    <button class="${tab==='contacts'?'on':''}" onclick="setTab('contacts')">Contacts</button>
+    <button class="${tab==='history'?'on':''}" onclick="setTab('history')">History</button>
+    <button class="${tab==='links'?'on':''}" onclick="setTab('links')">Links</button>
+  </div>`;
+}
+
+function tabDialer() {
+  const isPhone = /^\+?\d[\d\s()-]{5,}$/.test((dial || '').trim());
+  const gwReady = !!gatewayOnline;
+  const phoneReady = pstnConfigured === true && twilioReady;
+  let callBtn;
+  if (!isPhone) {
+    callBtn = `<button id="btnCall" class="btn btn-primary" style="width:100%;margin-top:14px" ${canCall(dial) ? '' : 'disabled'} onclick="onCallClick()">📞 Call</button>`;
+  } else if (gwReady && !forceTwilio) {
+    callBtn = `<button id="btnCall" class="btn btn-primary" style="width:100%;margin-top:14px" ${canCall(dial) ? '' : 'disabled'} onclick="onCallClick()">📞 Call via my Android · FREE</button>`;
+  } else if (pstnConfigured) {
+    callBtn = `<button id="btnCall" class="btn btn-primary" style="width:100%;margin-top:14px" ${(canCall(dial) && phoneReady) ? '' : 'disabled'} onclick="onCallClick()">📞 ${phoneReady ? (gwReady ? 'Call via Twilio · paid' : 'Call phone') : 'Phone connecting…'}</button>`;
+  } else {
+    callBtn = `<button id="btnCall" class="btn btn-primary" style="width:100%;margin-top:14px" disabled>📞 No phone route available</button>`;
+  }
+  const routeToggle = (gwReady && pstnConfigured)
+    ? `<button class="btn btn-ghost tiny" style="margin-top:8px" onclick="forceTwilio=!forceTwilio;renderApp()">Route: ${forceTwilio ? 'Twilio (paid) — switch to my Android (free)' : 'my Android (free) — switch to Twilio (paid)'}</button>`
+    : '';
+  return `
+  <div class="card">
+    <h2>Dial</h2>
+    <input class="input" id="dial" placeholder="bob@opencall or +995599123456" value="${esc(dial)}" oninput="dial=this.value;updateEstimate()" style="font-size:1.1rem">
+    <div id="estimate" class="tiny" style="margin:8px 0 0">${estimateFor(dial)}</div>
+    ${callBtn}
+    ${routeToggle}
+    <div id="app-err"></div>
+    ${gwReady ? `<p class="tiny" style="margin:14px 0 0">🤖 SIM gateway <span class="mint">online</span> · ${esc(gatewayOnline.name || 'Android phone')} · your number <span class="mint">${esc(gatewayOnline.sim_number || 'unknown')}</span> · SMS + calls from your own SIM, free</p>` : ''}
+    ${pstnConfigured === false ? '<p class="tiny" style="margin:6px 0 0">📱 Twilio phone calls: not configured. ' + (gwReady ? 'Your Android gateway covers real phone calls free.' : 'Internet calls work now. Add Twilio credentials or pair your Android phone in Devices.') + '</p>' :
+      (pstnConfigured && !twilioReady ? '<p class="tiny" style="margin:6px 0 0">📱 Connecting to the Twilio phone network…</p>' :
+      (pstnConfigured ? `<p class="tiny" style="margin:6px 0 0">📱 Twilio live · caller ID <span class="mint">${esc(pstnCallerId)}</span> · carrier rates apply</p>` : ''))}
+  </div>
+  ${tabsHtml()}`;
+}
+
+function onCallClick() {
+  const d = (dial || '').trim();
+  if (/^\+?\d[\d\s()-]{5,}$/.test(d)) {
+    if (gatewayOnline && !forceTwilio) return placeGatewayCall(d);   // free first
+    if (pstnConfigured) return placePstnCall(d);                     // paid fallback
+    return setError('No phone route: pair your Android in Devices, or configure Twilio.');
+  }
+  placeCall(d);
+}
+
+/* ---------------- SMS tab ---------------- */
+function tabSms() {
+  const ready = !!gatewayOnline;
+  return `
+  <div class="card">
+    <div class="row between"><h2>SMS <span class="tiny">via your Android</span></h2><button class="btn btn-ghost" onclick="refreshSms()">↻</button></div>
+    ${ready
+      ? `<p class="tiny" style="margin:0 0 10px">Sent and received from <span class="mint">${esc(gatewayOnline.sim_number || gatewayOnline.name || 'your SIM')}</span> — real SMS, your number, free (carrier SMS rates may apply on the SIM plan).</p>`
+      : '<p class="muted">No gateway device online. Pair your Android phone in the Devices tab to send and receive SMS from your own number.</p>'}
+    <label class="label">To</label>
+    <input class="input" placeholder="+995599123456" value="${esc(smsTo)}" oninput="smsTo=this.value" ${ready ? '' : 'disabled'}>
+    <label class="label">Message</label>
+    <textarea class="input" rows="3" placeholder="Type your message…" oninput="smsBody=this.value" ${ready ? '' : 'disabled'}>${esc(smsBody)}</textarea>
+    <button class="btn btn-primary" style="width:100%;margin-top:10px" ${ready ? '' : 'disabled'} onclick="sendSms()">Send SMS</button>
+    <div id="app-err"></div>
+    <div style="margin-top:16px">
+      ${smsList.length === 0 ? '<p class="muted">No messages yet.</p>' : smsList.map(m => `
+      <div class="contact">
+        <div>
+          <strong>${m.direction === 'inbound' ? '← ' + esc(m.from_number || '?') : '→ ' + esc(m.to_number || '?')}</strong>
+          <div style="margin-top:2px">${esc(m.body)}</div>
+          <div class="tiny ${m.status === 'failed' ? '' : 'mint'}">${esc(m.direction)} · ${esc(m.status)}${m.error ? ' · ' + esc(m.error) : ''} · ${new Date(m.created_at).toLocaleString()}</div>
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>
+  ${tabsHtml()}`;
+}
+
+/* ---------------- Devices tab (gateway pairing) ---------------- */
+function tabDevices() {
+  const codeFresh = pairingCode && (Date.now() - pairingAt < 15 * 60000);
+  return `
+  <div class="card">
+    <h2>Your devices</h2>
+    <p class="muted">Pair your Android phone once — it becomes your free gateway for real SMS and real cellular calls on your own number, worldwide.</p>
+    ${gatewayDevices.length === 0 ? '<p class="muted">No devices paired yet.</p>' : gatewayDevices.map(d => `
+      <div class="contact">
+        <div>
+          <strong>${esc(d.name || 'Android phone')}</strong>
+          <div class="tiny mint">${esc(d.sim_number || 'SIM number unknown')}</div>
+          <div class="tiny">battery ${d.battery != null ? esc(d.battery) + '%' : '—'} · v${esc(d.app_version || '?')} · last seen ${d.last_seen_at ? new Date(d.last_seen_at).toLocaleTimeString() : 'never'}</div>
+        </div>
+        <div class="row">
+          <span class="pill ${d.online ? 'completed' : 'failed'}">${d.online ? 'online' : 'offline'}</span>
+          <button class="btn btn-ghost" onclick="unpairDevice('${d.id}')">Unpair</button>
+        </div>
+      </div>`).join('')}
+    <button class="btn btn-primary" ${codeFresh ? 'disabled' : ''} onclick="startPairing()">${codeFresh ? 'Code active…' : '＋ Pair a new device'}</button>
+    ${codeFresh ? `<div class="banner" style="margin-top:12px">
+      <strong>Pairing code: <span style="font-size:1.4rem;letter-spacing:.2em" class="mint">${esc(pairingCode)}</span></strong>
+      <div class="tiny" style="margin-top:6px">Open the OpenCall Gateway app on your Android → type this code → Pair. Valid 15 minutes, single use.
+     Expires in ${Math.max(0, Math.ceil((15 * 60000 - (Date.now() - pairingAt)) / 60000))} min.</div>
+    </div>` : ''}
+  </div>
+  ${tabsHtml()}`;
+}
+
+function tabContacts() {
+  return `
+  <div class="card">
+    <h2>Contacts</h2>
+    ${contacts.length === 0 ? '<p class="muted">No other users yet — register a second account to test calls.</p>' :
+      contacts.map(c => `
+      <div class="contact">
+        <div>
+          <strong>${esc(c.display_name)}</strong>
+          <div class="tiny mint">${esc(c.internet_identity)}</div>
+        </div>
+        <button class="btn btn-primary" onclick="dialUser('${esc(c.internet_identity)}')">Call</button>
+      </div>`).join('')}
+  </div>
+  ${tabsHtml()}`;
+}
+
+function tabHistory() {
+  return `
+  <div class="card">
+    <div class="row between"><h2>History</h2><button class="btn btn-ghost" onclick="refreshHistory()">↻</button></div>
+    ${history.length === 0 ? '<p class="muted">No calls yet.</p>' : `
+    <table><thead><tr><th>With</th><th>Route</th><th>Status</th><th>Duration</th></tr></thead><tbody>
+    ${history.map(h => {
+      const other = h.caller_kind === 'pstn'
+        ? '📱 ' + (h.normalized_destination || h.requested_destination || 'phone number')
+        : h.created_by === me.id
+        ? (h.caller_kind === 'guest' ? (h.guest_name || 'Guest') + ' (guest)' : h.normalized_destination)
+        : (h.caller_kind === 'guest' ? (h.guest_name || 'Guest') + ' (guest, you hosted)' : '→ you');
+      return `<tr>
+        <td>${esc(other)}</td>
+        <td class="tiny">${esc(h.route_type || 'ON_NET')}</td>
+        <td><span class="pill ${esc(h.status)}">${esc(h.status)}</span></td>
+        <td>${h.duration_seconds ? fmtDur(h.duration_seconds) : '—'}</td>
+      </tr>`; }).join('')}
+    </tbody></table>`}
+  </div>
+  ${tabsHtml()}`;
+}
+
+function tabLinks() {
+  return `
+  <div class="card">
+    <h2>Guest call links</h2>
+    <p class="muted">Anyone with the link can call you from their browser — no account, works over the public internet.</p>
+    <button class="btn btn-primary" onclick="createGuestLink()">Create guest link</button>
+    <div id="guest-out" style="margin-top:12px"></div>
+  </div>
+  ${tabsHtml()}`;
+}
+
+/* ---------------- UI helpers ---------------- */
+function setTab(t) { tab = t; renderApp(); }
+function dialUser(id) { dial = id; tab = 'dialer'; renderApp(); placeCall(id); }
+function updateEstimate() {
+  const el = document.getElementById('estimate'); if (el) el.innerHTML = estimateFor(dial);
+  const btn = document.getElementById('btnCall'); if (btn) { if (canCall(dial)) btn.removeAttribute('disabled'); else btn.setAttribute('disabled', ''); }
+}
+
+function estimateFor(v) {
+  if (!v || !v.trim()) return 'Type a destination — route is shown honestly before you call.';
+  if (/^\+?\d[\d\s()-]{5,}$/.test(v.trim())) {
+    if (gatewayOnline && !forceTwilio) return '<span class="mint" style="font-weight:600">FREE · SIM gateway</span> · your Android dials their real number from your own SIM · no per-call cost';
+    if (pstnConfigured === true && twilioReady) return '<span style="color:#fbbf24;font-weight:600">PSTN — real phone call</span> · dials their cellular/mobile network · carrier rates apply';
+    if (pstnConfigured === true) return '<span style="color:#fbbf24;font-weight:600">PSTN</span> · connecting to the phone network…';
+    return '<span style="color:#fbbf24;font-weight:600">PSTN — COST MAY APPLY</span> · phone dialing is not configured in this deployment yet. Internet calls work now.';
+  }
+  if (v.includes('@')) return '<span class="mint" style="font-weight:600">FREE ON-NET</span> · OpenCall user — free internet call';
+  return 'Username → ' + esc(v.toLowerCase()) + '@opencall · FREE ON-NET if the user exists';
+}
+function canCall(v) { return v && v.trim().length >= 3; }
+
+function callBanner() {
+  if (call.phase === 'dialing' && call.isGateway) {
+    const secs = Math.floor((Date.now() - call.startedAt) / 1000);
+    return `<div class="bigcall"><div class="row between">
+      <div><strong>🤖 Dialing ${esc(call.remoteName)} via your Android…</strong> <span class="muted pulse">◉ phone is dialing</span>
+      <div class="tiny">${esc(call.routeNote)} · ${secs}s</div></div>
+      <button class="btn btn-danger" onclick="hangup()">End</button></div></div>`;
+  }
+  if (call.phase === 'dialing') {
+    const secs = Math.floor((Date.now() - call.startedAt) / 1000);
+    return `<div class="bigcall"><div class="row between">
+      <div><strong>📱 Dialing ${esc(call.remoteName)}…</strong> <span class="muted pulse">◉ connecting to phone network</span>
+      <div class="tiny">${esc(call.routeNote)} · ${secs}s</div></div>
+      <button class="btn btn-danger" onclick="hangup()">End</button></div></div>`;
+  }
+  if (call.phase === 'ringing' && call.isGateway) {
+    const secs = Math.floor((Date.now() - call.startedAt) / 1000);
+    return `<div class="bigcall"><div class="row between">
+      <div><strong>📞 Calling ${esc(call.remoteName)}…</strong> <span class="muted pulse">◉ their phone is ringing</span>
+      <div class="tiny">${esc(call.routeNote)} · ${secs}s · hangs up after ${RING_TIMEOUT_S} s if not answered</div></div>
+      <button class="btn btn-danger" onclick="hangup()">End</button></div></div>`;
+  }
+  if (call.phase === 'ringing' && call.isPstn) {
+    const secs = Math.floor((Date.now() - call.startedAt) / 1000);
+    return `<div class="bigcall"><div class="row between">
+      <div><strong>📞 Calling ${esc(call.remoteName)}…</strong> <span class="muted pulse">◉ ringing their phone</span>
+      <div class="tiny">${esc(call.routeNote)} · ${secs}s · hangs up after ${RING_TIMEOUT_S} s if not answered</div></div>
+      <button class="btn btn-danger" onclick="hangup()">End</button></div></div>`;
+  }
+  if (call.phase === 'ringing') {
+    const secs = Math.floor((Date.now() - call.startedAt) / 1000);
+    return `<div class="bigcall"><div class="row between">
+      <div><strong>Calling ${esc(call.remoteName)}…</strong> <span class="muted pulse">◉ ringing</span>
+      <div class="tiny">${esc(call.routeNote)} · ${secs}s · hangs up honestly after ${RING_TIMEOUT_S} s if not answered</div></div>
+      <button class="btn btn-danger" onclick="hangup()">End</button></div></div>`;
+  }
+  if (call.phase === 'onphone') {
+    return `<div class="bigcall"><div class="row between">
+      <div><strong>📱 On your phone: ${esc(call.remoteName)}</strong>
+      <div class="tiny">${esc(call.routeNote)} · talking on the handset · audio not in the browser</div></div>
+      <div class="row">
+        <button class="btn btn-ghost" onclick="joinBridge()">Open audio bridge</button>
+        <button class="btn btn-danger" onclick="hangup()">End</button>
+      </div></div></div>`;
+  }
+  if (call.phase === 'active') {
+    const listenOnly = !!call.stateNote && call.stateNote.includes('listen-only');
+    return `<div class="bigcall"><div class="row between">
+      <div><strong>🔴 On call with ${esc(call.remoteName)}</strong>
+      <div class="tiny">${call.isPstn ? esc(call.routeNote) + ' · ' : ''}quality: <span class="qdot ${call.quality}"></span> <span class="qlabel">${call.quality}</span>${call.isPstn ? '' : ' · rtt <span class="rtt">' + (call.rttMs ?? '…') + '</span> ms'}</div>
+      ${call.stateNote ? `<div class="tiny micnote" style="color:#b45309">${esc(call.stateNote)}</div>` : ''}</div>
+      <div class="row">
+        ${listenOnly ? '<button class="btn btn-ghost" onclick="retryMic(this)">Retry mic</button>' : ''}
+        ${listenOnly ? '' : `<button class="btn btn-ghost" onclick="toggleMute(this)">${muteState ? 'Unmute' : 'Mute'}</button>`}
+        <button class="btn btn-danger" onclick="hangup()">End</button>
+      </div></div></div>`;
+  }
+  if (incoming && incoming.isGateway) {
+    return `<div class="bigcall"><div class="row between">
+      <div><strong class="pulse">📲 Incoming call to your SIM: ${esc(incoming.fromName || 'unknown number')}</strong>
+      <div class="tiny mint">real cellular call · answer here or on your phone</div></div>
+      <div class="row">
+        <button class="btn btn-primary" onclick="answerWithBridge()">Accept + bridge</button>
+        <button class="btn btn-ghost" onclick="answerOnPhone()">On phone</button>
+        <button class="btn btn-danger" onclick="declineGateway()">Reject</button>
+      </div></div></div>`;
+  }
+  if (incoming) {
+    return `<div class="bigcall"><div class="row between">
+      <div><strong class="pulse">📲 Incoming call from ${esc(incoming.fromName || 'User')}</strong><div class="tiny mint">FREE ON-NET · internet call</div></div>
+      <div class="row">
+        <button class="btn btn-primary" onclick="acceptIncoming()">Accept</button>
+        <button class="btn btn-danger" onclick="rejectIncoming()">Reject</button>
+      </div></div></div>`;
+  }
+  return '';
+}
+
+function setError(msg) { const el = document.getElementById('app-err'); if (el) el.innerHTML = msg ? `<div class="err">${esc(msg)}</div>` : ''; }
+function honestError(err) {
+  const m = (err && (err.message || String(err))) || 'unknown error';
+  return m.length > 220 ? m.slice(0, 220) + '…' : m;
+}
+function fmtDur(s) { const m = Math.floor(s / 60), r = s % 60; return m ? `${m}m ${r}s` : `${r}s`; }
+function showToast(msg) { const t = document.createElement('div'); t.className = 'banner'; t.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:99'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 3500); }
+function showGuest(url) { document.getElementById('guest-out').innerHTML = `<div class="banner"><div class="tiny" style="margin-bottom:6px">Valid 60 minutes · free internet call to you</div><input class="input" value="${esc(url)}" readonly onclick="this.select()"><button class="btn btn-ghost" style="margin-top:8px;width:100%" onclick="navigator.clipboard.writeText('${esc(url)}');showToast('Link copied')">Copy link</button></div>`; }
+
+/* ---------------- guest join (no account needed) ---------------- */
+let guestCtx = null; // {token, host:{hostId,hostName,hostIdentity}}
+
+async function guestJoin(token) {
+  guestCtx = { token, host: null, sb: null };
+  const gsb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { storageKey: 'opencall-guest-auth' }   // separate storage: never inherit (or clobber) the host session
+  });
+  guestCtx.sb = gsb;
+  const { data, error } = await activeSb().rpc('redeem_guest_link', { p_token: token });
+  if (error) {
+    root.innerHTML = `<div class="card" style="max-width:420px;margin:80px auto"><h2>Guest link</h2><div class="err">${esc(error.message)}</div><p class="tiny"><a href="./">← Landing page</a></p></div>`;
+    return;
+  }
+  guestCtx.host = data;
+  renderGuestIdle();
+}
+
+function renderGuestIdle() {
+  if (!guestCtx || !guestCtx.host) return;
+  const data = guestCtx.host;
+  root.innerHTML = `
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:96vh">
+    <div class="card" style="width:100%;max-width:420px;text-align:center">
+      <h1 style="margin-bottom:4px">OpenCall <span class="mint">AI</span> — guest</h1>
+      <p class="muted">You are calling <strong>${esc(data.hostName)}</strong> (<span class="mint">${esc(data.hostIdentity)}</span>).<br>Free internet audio call. Your browser will ask for microphone access.</p>
+      <input class="input" id="g-name" placeholder="Your name (optional)" style="margin:10px 0">
+      <button class="btn btn-primary" style="width:100%" id="g-go">📞 Join call</button>
+      <div id="g-status" style="margin-top:12px"></div>
+      <p class="tiny" style="margin-top:12px"><a href="./">← Landing page</a></p>
+    </div>
+  </div>`;
+  document.getElementById('g-go').onclick = () => guestStart();
+}
+
+async function guestStart() {
+  const name = document.getElementById('g-name').value.trim() || 'Guest';
+  const st = document.getElementById('g-status');
+  st.innerHTML = '<p class="muted">Creating call…</p>';
+  const { data: c, error } = await activeSb().rpc('guest_request_call', { p_token: guestCtx.token, p_guest_name: name });
+  if (error) { st.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  call = { callId: c.id, phase: 'ringing', remoteName: guestCtx.host.hostName, peerId: null, isGuest: true,
+           quality:'unknown', rttMs:null, startedAt: Date.now(), routeNote: 'FREE INTERNET · guest link', role: 'caller' };
+  eventSeq = 0;
+  st.innerHTML = `<p class="mint pulse">Ringing ${esc(guestCtx.host.hostName)}… (they must have the app open)</p>`;
+  startEventPoll();
+  ringTimeout = setTimeout(async () => {
+    if (call.phase === 'ringing') endCallLocal('no answer after 45 s — host may be offline');
+  }, RING_TIMEOUT_S * 1000);
+}
+
+function guestOnStatus(status) {
+  if (!call.callId) return;
+  if (status === 'answered' && call.phase === 'ringing') {
+    clearTimeout(ringTimeout); ringTimeout = null;
+    call.phase = 'active';
+    renderGuestActive();
+    guestMedia();
+  }
+  if (['rejected','no_answer','cancelled','failed','completed'].includes(status)) {
+    endCallLocal(status === 'completed' ? 'ended' : status.replace('_', ' '));
+  }
+}
+
+function renderGuestActive() {
+  const listenOnly = !!call.stateNote && call.stateNote.includes('listen-only');
+  root.innerHTML = `
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:96vh">
+    <div class="card" style="width:100%;max-width:420px;text-align:center">
+      <h2>🔴 On call with ${esc(call.remoteName)}</h2>
+      <p class="tiny">quality: <span class="qdot ${call.quality}"></span> <span class="qlabel">${call.quality === 'unknown' ? 'connecting…' : call.quality}</span> · rtt <span class="rtt">${call.rttMs ?? '…'}</span> ms</p>
+      ${call.stateNote ? `<p class="tiny micnote" style="color:#b45309">${esc(call.stateNote)}</p>` : ''}
+      <div class="row" style="justify-content:center">
+        ${listenOnly ? '<button class="btn btn-ghost" onclick="retryMic(this)">Retry mic</button>' : ''}
+        <button class="btn btn-danger" onclick="hangup()">End call</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* guest media: guest is the offerer; everything rides the durable events path */
+async function guestMedia() {
+  localStream = await getMic(15000);
+  if (!localStream) {
+    call.stateNote = 'no microphone — listen-only (you can hear Alice, she cannot hear you)';
+    renderGuestActive();
+  }
+  pc = new RTCPeerConnection(RTC_CONFIG);
+  if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+  else pc.addTransceiver('audio', { direction: 'recvonly' });   // valid SDP so listen-only still connects
+  pc.ontrack = (e) => { remoteAudio.srcObject = e.streams[0]; remoteAudio.play().catch(() => {}); };
+  pc.onconnectionstatechange = () => {
+    if (pc && ['failed','disconnected','closed'].includes(pc.connectionState) && call.phase === 'active') endCallLocal('connection lost');
+  };
+  pc.onicecandidate = (e) => { if (e.candidate) sendSignal('ice', e.candidate.toJSON()); };
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await waitIceGather(pc);
+  await sendSignal('offer', pc.localDescription);
+
+  const stats = setInterval(async () => {
+    if (!pc) { clearInterval(stats); return; }
+    try {
+      const r = await pc.getStats();
+      r.forEach(s => {
+        if (s.type === 'candidate-pair' && s.state === 'succeeded' && s.currentRoundTripTime != null) {
+          call.rttMs = Math.round(s.currentRoundTripTime * 1000);
+          call.quality = call.rttMs < 150 ? 'excellent' : call.rttMs < 400 ? 'good' : 'poor';
+          updateQualityUI();
+        }
+      });
+    } catch {}
+  }, 4000);
+}
+
+/* ---------------- router ---------------- */
+window.addEventListener('hashchange', route);
+
+function route() {
+  const h = location.hash;
+  const m = h.match(/^#\/guest\/([a-f0-9]+)/);
+  if (m) { guestJoin(m[1]); return; }
+  boot();
+}
+
+route();
+</script>
+</body>
+</html>

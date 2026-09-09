@@ -1,0 +1,48 @@
+name: android-gateway-apk
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'apps/android-gateway/**'
+      - '.github/workflows/android-gateway.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android-gateway
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle wrapper
+        run: |
+          gradle wrapper --gradle-version 8.9 || true
+          chmod +x gradlew || true
+
+      - name: Build debug APK
+        run: |
+          if [ -x ./gradlew ]; then
+            ./gradlew :app:assembleDebug --no-daemon
+          else
+            gradle :app:assembleDebug --no-daemon
+          fi
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencall-gateway-debug-apk
+          path: apps/android-gateway/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenCall AI — Internet-first calling. Local AI agents. Self-hostable.</title>
+<meta name="description" content="Open-source, self-hostable, Internet-first calling platform: browser↔browser and human↔AI calls that are effectively free, with SIP and PSTN as explicit, optional fallbacks.">
+<style>
+  :root{
+    --ink-950:#0b0f17; --ink-900:#10151f; --ink-800:#171e2c; --ink-700:#202a3d; --ink-600:#2b3850;
+    --mint-400:#34d399; --mint-500:#10b981;
+    --slate-200:#e2e8f0; --slate-400:#94a3b8; --slate-500:#64748b; --amber-400:#fbbf24; --red-300:#fca5a5;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ink-950); color:var(--slate-200); font:16px/1.6 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; -webkit-font-smoothing:antialiased}
+  a{color:var(--mint-400); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1000px; margin:0 auto; padding:0 20px}
+  .card{background:var(--ink-900); border:1px solid var(--ink-700); border-radius:16px; padding:22px}
+  .btn{display:inline-flex; align-items:center; gap:8px; border-radius:12px; padding:10px 18px; font-weight:600; font-size:14px; border:none; cursor:pointer; transition:background .15s}
+  .btn-primary{background:var(--mint-500); color:var(--ink-950)}
+  .btn-primary:hover{background:var(--mint-400)}
+  .btn-ghost{background:var(--ink-800); color:var(--slate-200); border:1px solid var(--ink-600)}
+  .btn-ghost:hover{background:var(--ink-700)}
+  .tag{display:inline-block; font-size:12px; font-weight:600; letter-spacing:.4px; text-transform:uppercase; padding:4px 10px; border-radius:999px; border:1px solid var(--ink-600); background:var(--ink-800); color:var(--slate-400)}
+  .tag-mint{border-color:rgba(52,211,153,.4); color:var(--mint-400)}
+  .tag-amber{border-color:rgba(251,191,36,.4); color:var(--amber-400)}
+
+  header.site{position:sticky; top:0; z-index:10; background:rgba(11,15,23,.9); backdrop-filter:blur(8px); border-bottom:1px solid var(--ink-700)}
+  header.site .wrap{display:flex; align-items:center; justify-content:space-between; height:60px}
+  .logo{display:flex; align-items:center; gap:10px; font-weight:700; color:#fff; font-size:17px}
+  .logo .dot{width:10px; height:10px; border-radius:50%; background:var(--mint-500); box-shadow:0 0 12px var(--mint-500)}
+  nav.top{display:flex; gap:18px; font-size:14px; color:var(--slate-400)}
+  nav.top a{color:var(--slate-400)}
+  nav.top a:hover{color:#fff}
+
+  .hero{padding:72px 0 40px; text-align:center}
+  .hero h1{font-size:clamp(30px,5vw,46px); line-height:1.15; color:#fff; letter-spacing:-.5px}
+  .hero h1 em{font-style:normal; color:var(--mint-400)}
+  .hero p.sub{max-width:640px; margin:18px auto 0; color:var(--slate-400); font-size:17px}
+  .hero .cta{margin-top:28px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap}
+  .badges{margin-top:22px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap}
+
+  .banner{border:1px solid rgba(251,191,36,.35); background:rgba(251,191,36,.06); color:var(--amber-400); border-radius:14px; padding:14px 18px; font-size:14px; margin:26px auto 0; max-width:860px}
+  .banner strong{color:#fde68a}
+
+  h2.sec{font-size:26px; color:#fff; margin:64px 0 6px; letter-spacing:-.3px}
+  p.secsub{color:var(--slate-500); margin-bottom:22px}
+  .grid{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .card h3{color:#fff; font-size:16px; margin-bottom:6px}
+  .card p{color:var(--slate-400); font-size:14px}
+  .card .ico{font-size:22px; margin-bottom:10px}
+
+  /* screenshots */
+  .shots{display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  figure{background:var(--ink-900); border:1px solid var(--ink-700); border-radius:16px; overflow:hidden}
+  figure img{display:block; width:100%; height:auto}
+  figcaption{padding:10px 14px; font-size:13px; color:var(--slate-400); border-top:1px solid var(--ink-700)}
+  figcaption b{color:var(--slate-200)}
+  .shot-pair{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+  @media (max-width:760px){.shot-pair{grid-template-columns:1fr}}
+
+  table.modes{width:100%; border-collapse:collapse; font-size:14px}
+  table.modes th{ text-align:left; color:var(--slate-500); font-size:12px; text-transform:uppercase; letter-spacing:.5px; padding:10px 12px; border-bottom:1px solid var(--ink-700)}
+  table.modes td{padding:12px; border-bottom:1px solid var(--ink-800); color:var(--slate-400)}
+  table.modes td:first-child{color:#fff; font-weight:600; white-space:nowrap}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.92em; background:var(--ink-800); border:1px solid var(--ink-700); border-radius:6px; padding:1px 6px; color:var(--mint-400)}
+  pre{background:var(--ink-900); border:1px solid var(--ink-700); border-radius:14px; padding:18px; overflow-x:auto; font-size:13.5px; line-height:1.55}
+  pre code{background:none; border:none; padding:0; color:#c9d4e3}
+
+  footer{margin-top:80px; border-top:1px solid var(--ink-700); padding:28px 0 40px; color:var(--slate-500); font-size:13.5px}
+  footer .wrap{display:flex; flex-wrap:wrap; gap:14px; justify-content:space-between}
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <div class="logo"><span class="dot"></span> OpenCall AI</div>
+    <nav class="top">
+      <a href="#features">Features</a>
+      <a href="#screens">Screens</a>
+      <a href="#run">Run it</a>
+      <a href="app.html" style="color:#fff; font-weight:600">Live app ↗</a>
+      <a href="https://github.com/devso3939/AI-Call-software" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <h1>Internet-first calling.<br><em>Local AI agents.</em> Self-hostable.</h1>
+    <p class="sub">Open-source calling platform: browser↔browser and human↔AI calls that are effectively free — with SIP and PSTN as explicit, optional, honestly-priced fallbacks.</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="app.html" style="font-size:16px; padding:13px 26px">📞 Open the live app — call now</a>
+      <a class="btn btn-ghost" href="https://github.com/devso3939/AI-Call-software" target="_blank" rel="noopener">★ View source on GitHub</a>
+      <a class="btn btn-ghost" href="#run">Run your own in 3 commands</a>
+    </div>
+    <div class="badges">
+      <span class="tag tag-mint">✓ Live on Supabase — browser↔browser calls work right now</span>
+      <span class="tag">WebRTC P2P</span>
+      <span class="tag">Supabase Auth + Realtime</span>
+      <span class="tag">No install — runs in your browser</span>
+      <span class="tag">Apache-2.0</span>
+    </div>
+
+    <div class="banner" style="border-color:rgba(52,211,153,.4); background:rgba(52,211,153,.07); color:var(--mint-400)">
+      ✅ <strong style="color:#6ee7b7">The cloud app is live:</strong> <a href="app.html" style="color:#6ee7b7; font-weight:700; text-decoration:underline">devso3939.github.io/AI-Call-software/app.html</a> — sign in (demo: <code style="color:#6ee7b7">alice@opencall.app</code> / <code style="color:#6ee7b7">opencall123</code>) and dial <code style="color:#6ee7b7">bob@opencall</code> from a second device or tab. Real audio, real history, guest links — all hosted for free.
+    </div>
+
+    <div class="banner">
+      📱 <strong>Real phone calls (PSTN):</strong> the app ships with full PSTN support — dial any real number (<code>+995599123456</code>) and Twilio rings their cellular/mobile network, even if they have no internet. Phone dialing activates automatically once Twilio credentials are configured in the database; until then the dialer says so honestly. Internet calls work immediately and are free.
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2 class="sec">What's inside</h2>
+    <p class="secsub">Every feature is backed by a real backend effect — no fake buttons (master prompt §116).</p>
+    <div class="grid">
+      <div class="card"><div class="ico">📞</div><h3>Free on-net browser calls</h3><p>Register, dial another OpenCall user, talk over WebRTC through your own LiveKit SFU. Zero cost, zero vendor.</p></div>
+      <div class="card"><div class="ico">🤖</div><h3>Human ↔ AI voice calls</h3><p>Local AI agents (VAD → STT → LLM → TTS) answer calls in-browser. Runs against LM Studio/Ollama on your machine — by default <code>LOCAL_AI=true</code>.</p></div>
+      <div class="card"><div class="ico">🧭</div><h3>Honest route classification</h3><p>The dialer always shows what a destination is: <b style="color:#34d399">FREE ON-NET</b>, SIP, FEDERATED, PSTN — COST MAY APPLY, or NO ROUTE. Never hides the truth (§37).</p></div>
+      <div class="card"><div class="ico">🔗</div><h3>Guest call links</h3><p>Can't reach someone on-net? Create a short-lived link — the recipient joins from their browser with no account (§39).</p></div>
+      <div class="card"><div class="ico">📈</div><h3>Live call quality</h3><p>Mute/End controls, quality indicator and RTT measured from real RTP statistics — the same numbers you'd see in a network console.</p></div>
+      <div class="card"><div class="ico">📱</div><h3>Real phone calls (PSTN)</h3><p>Dial any number worldwide via Twilio Voice — it rings their mobile/cellular network. Access tokens are minted inside the database, so credentials never touch the browser. Requires your own Twilio account &amp; number.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="wrap">
+    <h2 class="sec">Real screenshots from the running app</h2>
+    <p class="secsub">Captured live during an actual alice ↔ bob call on the dev stack (Next.js :3000 + :3001, Fastify :4000, LiveKit :7880).</p>
+
+    <div class="shots">
+      <figure>
+        <img src="assets/shot-login.png" alt="OpenCall AI login screen" loading="lazy">
+        <figcaption><b>Sign in / Register</b> — real session tokens from the API, your free identity <code style="font-size:12px">you@opencall</code>.</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/shot-dialer.png" alt="Dialer showing PSTN route estimate" loading="lazy">
+        <figcaption><b>Dialer with honest routing</b> — a Georgian mobile number (+995…) is classified as <b style="color:#fbbf24">PSTN — COST MAY APPLY</b>, call button disabled, and a free browser-link invite is offered instead (§37, §53).</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/shot-activecall.png" alt="Active call panel on Alice's side" loading="lazy">
+        <figcaption><b>In call (Alice's side)</b> — quality: <b style="color:#34d399">excellent</b>, rtt 1 ms, Mute/End controls. Verified two-way audio: ~12k packets each way, 0 loss.</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/shot-activecall-bob.png" alt="Active call panel on Bob's side" loading="lazy">
+        <figcaption><b>In call (Bob's side)</b> — same call, other participant. Both legs show live quality from real RTP stats.</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/shot-history-live.png" alt="Call history with live call" loading="lazy">
+        <figcaption><b>Call history</b> — real persisted calls with route type and status, updated over WebSocket while a call is <b style="color:#34d399">active</b>.</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/shot-links.png" alt="Guest browser call links" loading="lazy">
+        <figcaption><b>Guest links</b> — one click mints a real short-lived, signed join URL for account-free joining.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section id="run">
+  <div class="wrap">
+    <h2 class="sec">Run your own — 3 commands (Windows)</h2>
+    <p class="secsub">One script checks prerequisites, downloads LiveKit, migrates the DB and starts everything.</p>
+    <pre><code>git clone https://github.com/devso3939/AI-Call-software.git
+cd AI-Call-software
+./start-dev.ps1</code></pre>
+    <p class="secsub" style="margin-top:14px">Then open <code>http://localhost:3000</code> in two browser profiles, register two users, and call each other.</p>
+
+    <h2 class="sec" style="font-size:22px">Modes</h2>
+    <div class="card" style="overflow-x:auto">
+      <table class="modes">
+        <tr><th>Mode</th><th>Env</th><th>Includes</th></tr>
+        <tr><td>internet-only <span class="tag tag-mint" style="margin-left:6px">default</span></td><td><code>PSTN_ENABLED=false</code></td><td>browser calls · guest links · AI browser calls · internal identities</td></tr>
+        <tr><td>hybrid</td><td><code>PSTN_ENABLED=true</code> + configured trunk</td><td>+ PSTN with cost estimates &amp; spend limits</td></tr>
+      </table>
+    </div>
+
+    <h2 class="sec" style="font-size:22px">Layout</h2>
+    <div class="card" style="font-size:14px; color:var(--slate-400); line-height:2">
+      <code>apps/web</code> Next.js UI &nbsp;·&nbsp; <code>apps/api</code> Fastify API &nbsp;·&nbsp; <code>packages/types</code> domain types &nbsp;·&nbsp; <code>packages/db</code> schema &amp; migrations &nbsp;·&nbsp; <code>packages/eventbus</code> realtime events &nbsp;·&nbsp; <code>packages/auth</code> sessions &nbsp;·&nbsp; <code>packages/livekit-tokens</code> scoped join tokens &nbsp;·&nbsp; <code>services/agent-runtime</code> Python AI voice worker &nbsp;·&nbsp; <code>infra/livekit</code> SFU config &nbsp;·&nbsp; <code>docs</code> plans &amp; status
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>OpenCall AI — open-source, Apache-2.0. Third-party components: <a href="https://github.com/devso3939/AI-Call-software/blob/main/docs/THIRD_PARTY_COMPONENTS.md" target="_blank" rel="noopener">docs/THIRD_PARTY_COMPONENTS.md</a></div>
+    <div><a href="https://github.com/devso3939/AI-Call-software" target="_blank" rel="noopener">github.com/devso3939/AI-Call-software</a></div>
+  </div>
+</footer>
+
+</body>
+</html>
