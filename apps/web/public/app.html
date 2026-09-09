@@ -42,6 +42,9 @@
   .pill.completed{background:rgba(16,185,129,.15);color:var(--mint400)}
   .pill.ringing,.pill.active,.pill.answered{background:rgba(52,211,153,.25);color:var(--mint400)}
   .pill.failed,.pill.cancelled,.pill.rejected,.pill.no_answer{background:rgba(220,38,38,.15);color:#fca5a5}
+  .pill.queued{background:rgba(251,191,36,.15);color:#fcd34d}
+  .pill.sent,.pill.delivered{background:rgba(16,185,129,.15);color:var(--mint400)}
+  .pill.created,.pill.dialing{background:rgba(251,191,36,.15);color:#fcd34d}
   .contact{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--ink700);border-radius:12px;background:var(--ink800);padding:10px 12px;margin-bottom:8px}
   .tabs{display:flex;gap:6px;margin:14px 0}
   .tabs button{flex:1;border-radius:10px;border:1px solid var(--ink600);background:var(--ink800);color:#94a3b8;padding:8px 4px;font-size:.8rem;font-weight:600;cursor:pointer}
@@ -54,6 +57,13 @@
   a{color:var(--mint400)}
   .pulse{animation:pulse 1.2s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  pre.code{background:var(--ink950);border:1px solid var(--ink700);border-radius:10px;padding:12px;font-size:.75rem;line-height:1.5;overflow-x:auto;margin:8px 0 4px;color:#a5f3fc;white-space:pre;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .copybtn{background:var(--ink800);border:1px solid var(--ink600);color:#cbd5e1;border-radius:8px;padding:4px 10px;font-size:.72rem;font-weight:600;cursor:pointer}
+  .copybtn:hover{background:var(--ink700)}
+  .charcount{font-size:.7rem;color:#64748b;text-align:right;margin-top:2px}
+  .charcount.over{color:#fca5a5}
+  .keybox{border:1px solid var(--mint600);border-radius:12px;background:rgba(16,185,129,.08);padding:12px;margin-top:10px}
+  @media (prefers-reduced-motion:no-preference){.btn{transition:background .15s,border-color .15s}}
 </style>
 </head>
 <body>
@@ -135,6 +145,13 @@ let smsBody = '';
 let pairingCode = null;          // 6-digit code waiting to be typed into the app
 let pairingAt = 0;
 let forceTwilio = false;         // route override when both gateway + Twilio are up
+
+/* OpenCall Connect: API keys for external apps/services */
+let apiKeys = [];                // rows from list_api_keys()
+let apiKeysLoaded = false;
+let newApiKeyName = '';
+let freshApiKey = null;          // {id,name,key,prefix} — plaintext shown exactly once
+let docKeySel = null;            // key id referenced by the copy-paste docs
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -353,8 +370,58 @@ async function startPairing() {
 }
 
 async function unpairDevice(id) {
+  if (!confirm('Unpair this phone? It will stop sending SMS and calls until paired again.')) return;
   await sb.rpc('remove_gateway_device', { p_device_id: id }).then(() => {}, () => {});
+  showToast('Device unpaired');
   await refreshDevices();
+}
+
+/* ---------------- OpenCall Connect: API keys for external apps ---------------- */
+async function refreshApiKeys() {
+  const { data, error } = await sb.rpc('list_api_keys');
+  if (!error && data) { apiKeys = data; apiKeysLoaded = true; }
+  if (me) renderApp();
+}
+
+async function createApiKey() {
+  setError('');
+  const name = (newApiKeyName || '').trim();
+  if (!name) return setError('Give the key a name — e.g. the app that will use it.');
+  const { data, error } = await sb.rpc('create_api_key', { p_name: name });
+  if (error) return setError(honestError(error));
+  freshApiKey = data;                       // plaintext key shown exactly once
+  newApiKeyName = '';
+  showToast('API key created — copy it now, it is shown only once');
+  await refreshApiKeys();
+  const el = document.getElementById('fresh-key');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function revokeApiKey(id) {
+  if (!confirm('Revoke this API key? Every app using it will immediately lose access.')) return;
+  const { error } = await sb.rpc('revoke_api_key', { p_id: id });
+  if (error) return setError(honestError(error));
+  showToast('Key revoked');
+  await refreshApiKeys();
+}
+
+function setActiveKeyForDocs(id) {
+  docKeySel = id;
+  renderApp();
+}
+
+function copyText(txt, msg) {
+  const done = () => showToast(msg || 'Copied');
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(done, () => fallbackCopy(txt, done));
+  } else fallbackCopy(txt, done);
+}
+function fallbackCopy(txt, done) {
+  const ta = document.createElement('textarea');
+  ta.value = txt; ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) {}
+  ta.remove();
 }
 
 /* outbound: real cellular call dialed by your Android — free, your caller ID */
@@ -933,7 +1000,8 @@ function renderApp() {
   document.title = 'OpenCall AI';
   if (!me) return;
   const body = tab === 'dialer' ? tabDialer() : tab === 'sms' ? tabSms() : tab === 'devices' ? tabDevices()
-             : tab === 'contacts' ? tabContacts() : tab === 'history' ? tabHistory() : tabLinks();
+             : tab === 'connect' ? tabConnect() : tab === 'contacts' ? tabContacts()
+             : tab === 'history' ? tabHistory() : tabLinks();
   root.innerHTML = `
     <header class="row between" style="margin-bottom:14px">
       <div>
@@ -952,6 +1020,7 @@ function tabsHtml() {
     <button class="${tab==='dialer'?'on':''}" onclick="setTab('dialer')">Dialer</button>
     <button class="${tab==='sms'?'on':''}" onclick="setTab('sms')">SMS</button>
     <button class="${tab==='devices'?'on':''}" onclick="setTab('devices')">Devices</button>
+    <button class="${tab==='connect'?'on':''}" onclick="setTab('connect')">Connect</button>
     <button class="${tab==='contacts'?'on':''}" onclick="setTab('contacts')">Contacts</button>
     <button class="${tab==='history'?'on':''}" onclick="setTab('history')">History</button>
     <button class="${tab==='links'?'on':''}" onclick="setTab('links')">Links</button>
@@ -978,7 +1047,7 @@ function tabDialer() {
   return `
   <div class="card">
     <h2>Dial</h2>
-    <input class="input" id="dial" placeholder="bob@opencall or +995599123456" value="${esc(dial)}" oninput="dial=this.value;updateEstimate()" style="font-size:1.1rem">
+    <input class="input" id="dial" placeholder="bob@opencall or +995599123456" value="${esc(dial)}" oninput="dial=this.value;updateEstimate()" onkeydown="if(event.key==='Enter'){event.preventDefault();if(!document.getElementById('btnCall').disabled)onCallClick()}" style="font-size:1.1rem" autocomplete="off">
     <div id="estimate" class="tiny" style="margin:8px 0 0">${estimateFor(dial)}</div>
     ${callBtn}
     ${routeToggle}
@@ -1002,8 +1071,24 @@ function onCallClick() {
 }
 
 /* ---------------- SMS tab ---------------- */
+function smsPill(m) {
+  const s = m.status || '';
+  const cls = s === 'failed' ? 'failed' : (s === 'sent' || s === 'delivered') ? 'sent'
+            : (s === 'queued' || s === 'pending') ? 'queued' : 'completed';
+  return `<span class="pill ${cls}">${esc(s || 'unknown')}</span>`;
+}
+function relTime(ts) {
+  if (!ts) return 'never';
+  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
 function tabSms() {
   const ready = !!gatewayOnline;
+  const len = (smsBody || '').length;
   return `
   <div class="card">
     <div class="row between"><h2>SMS <span class="tiny">via your Android</span></h2><button class="btn btn-ghost" onclick="refreshSms()">↻</button></div>
@@ -1011,23 +1096,30 @@ function tabSms() {
       ? `<p class="tiny" style="margin:0 0 10px">Sent and received from <span class="mint">${esc(gatewayOnline.sim_number || gatewayOnline.name || 'your SIM')}</span> — real SMS, your number, free (carrier SMS rates may apply on the SIM plan).</p>`
       : '<p class="muted">No gateway device online. Pair your Android phone in the Devices tab to send and receive SMS from your own number.</p>'}
     <label class="label">To</label>
-    <input class="input" placeholder="+995599123456" value="${esc(smsTo)}" oninput="smsTo=this.value" ${ready ? '' : 'disabled'}>
+    <input class="input" id="sms-to" placeholder="+995599123456" value="${esc(smsTo)}" oninput="smsTo=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('sms-body').focus()}" ${ready ? '' : 'disabled'} autocomplete="off">
     <label class="label">Message</label>
-    <textarea class="input" rows="3" placeholder="Type your message…" oninput="smsBody=this.value" ${ready ? '' : 'disabled'}>${esc(smsBody)}</textarea>
+    <textarea class="input" id="sms-body" rows="3" placeholder="Type your message… (Enter to send, Shift+Enter for a new line)" oninput="smsBody=this.value;smsCount()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendSms()}" ${ready ? '' : 'disabled'}>${esc(smsBody)}</textarea>
+    <div class="charcount" id="charcount">${len}/1600</div>
     <button class="btn btn-primary" style="width:100%;margin-top:10px" ${ready ? '' : 'disabled'} onclick="sendSms()">Send SMS</button>
     <div id="app-err"></div>
     <div style="margin-top:16px">
       ${smsList.length === 0 ? '<p class="muted">No messages yet.</p>' : smsList.map(m => `
       <div class="contact">
         <div>
-          <strong>${m.direction === 'inbound' ? '← ' + esc(m.from_number || '?') : '→ ' + esc(m.to_number || '?')}</strong>
+          <strong>${m.direction === 'inbound' ? '← ' : '→ '}<a href="#" onclick="event.preventDefault();smsTo='${esc(m.direction === 'inbound' ? (m.from_number || '') : (m.to_number || ''))}';renderApp();setTimeout(()=>document.getElementById('sms-to')&&document.getElementById('sms-to').focus(),0)" style="text-decoration:none">${esc(m.direction === 'inbound' ? (m.from_number || '?') : (m.to_number || '?'))}</a></strong>
           <div style="margin-top:2px">${esc(m.body)}</div>
-          <div class="tiny ${m.status === 'failed' ? '' : 'mint'}">${esc(m.direction)} · ${esc(m.status)}${m.error ? ' · ' + esc(m.error) : ''} · ${new Date(m.created_at).toLocaleString()}</div>
+          <div class="tiny" style="margin-top:2px">${smsPill(m)} · ${relTime(m.created_at)}${m.error ? ' · <span style="color:#fca5a5">' + esc(m.error) + '</span>' : ''}</div>
         </div>
       </div>`).join('')}
     </div>
   </div>
   ${tabsHtml()}`;
+}
+function smsCount() {
+  const el = document.getElementById('charcount'); if (!el) return;
+  const n = (smsBody || '').length;
+  el.textContent = n + '/1600';
+  el.className = 'charcount' + (n > 1600 ? ' over' : '');
 }
 
 /* ---------------- Devices tab (gateway pairing) ---------------- */
@@ -1042,7 +1134,7 @@ function tabDevices() {
         <div>
           <strong>${esc(d.name || 'Android phone')}</strong>
           <div class="tiny mint">${esc(d.sim_number || 'SIM number unknown')}</div>
-          <div class="tiny">battery ${d.battery != null ? esc(d.battery) + '%' : '—'} · v${esc(d.app_version || '?')} · last seen ${d.last_seen_at ? new Date(d.last_seen_at).toLocaleTimeString() : 'never'}</div>
+          <div class="tiny">battery ${d.battery != null ? esc(d.battery) + '%' : '—'} · v${esc(d.app_version || '?')} · last seen ${relTime(d.last_seen_at)}</div>
         </div>
         <div class="row">
           <span class="pill ${d.online ? 'completed' : 'failed'}">${d.online ? 'online' : 'offline'}</span>
@@ -1051,10 +1143,120 @@ function tabDevices() {
       </div>`).join('')}
     <button class="btn btn-primary" ${codeFresh ? 'disabled' : ''} onclick="startPairing()">${codeFresh ? 'Code active…' : '＋ Pair a new device'}</button>
     ${codeFresh ? `<div class="banner" style="margin-top:12px">
-      <strong>Pairing code: <span style="font-size:1.4rem;letter-spacing:.2em" class="mint">${esc(pairingCode)}</span></strong>
+      <div class="row between" style="flex-wrap:nowrap">
+        <strong>Pairing code: <span style="font-size:1.4rem;letter-spacing:.2em" class="mint">${esc(pairingCode)}</span></strong>
+        <button class="copybtn" onclick="copyText('${esc(pairingCode)}','Code copied')">Copy</button>
+      </div>
       <div class="tiny" style="margin-top:6px">Open the OpenCall Gateway app on your Android → type this code → Pair. Valid 15 minutes, single use.
      Expires in ${Math.max(0, Math.ceil((15 * 60000 - (Date.now() - pairingAt)) / 60000))} min.</div>
     </div>` : ''}
+  </div>
+  ${tabsHtml()}`;
+}
+
+/* ---------------- Connect tab: let other apps use your number ---------------- */
+function connectDocs(keyRef) {
+  const K = keyRef || '<YOUR_API_KEY>';
+  return `
+  <p class="tiny" style="margin:10px 0 0">Every request is a POST to the OpenCall REST endpoint with the public project key <code>apikey</code> header and your API key in the payload. No SDK needed — works from any language, any server, any automation platform (Zapier, n8n, Make, GitHub Actions…).</p>
+  <label class="label">1 · Check what the key can reach</label>
+  <button class="copybtn" onclick="copyText(connectExample('status','${esc(keyRef || '')}'))">Copy</button>
+  <pre class="code">${esc(connectExample('status', keyRef))}</pre>
+  <label class="label">2 · Send an SMS from your number</label>
+  <button class="copybtn" onclick="copyText(connectExample('sms','${esc(keyRef || '')}'))">Copy</button>
+  <pre class="code">${esc(connectExample('sms', keyRef))}</pre>
+  <label class="label">3 · Read recent messages (polling)</label>
+  <button class="copybtn" onclick="copyText(connectExample('getsms','${esc(keyRef || '')}'))">Copy</button>
+  <pre class="code">${esc(connectExample('getsms', keyRef))}</pre>
+  <label class="label">4 · Place a real cellular call</label>
+  <button class="copybtn" onclick="copyText(connectExample('call','${esc(keyRef || '')}'))">Copy</button>
+  <pre class="code">${esc(connectExample('call', keyRef))}</pre>
+  <label class="label">5 · Poll the call until it ends</label>
+  <button class="copybtn" onclick="copyText(connectExample('poll','${esc(keyRef || '')}'))">Copy</button>
+  <pre class="code">${esc(connectExample('poll', keyRef))}</pre>
+  <p class="tiny" style="margin:10px 0 0"><strong>AI voice agents:</strong> a call placed through the API can carry your own audio — post WebRTC offers/answers/ICE with <code>api_post_signal</code> and read the phone's audio stream with <code>api_get_signals</code>. Your Android phone bridges the audio acoustically into the real cellular call.</p>
+  <p class="tiny" style="margin:6px 0 0;color:#fca5a5"><strong>Honest limits:</strong> 60 requests/minute per account · a failed request is never counted · keys are shown once at creation (only a hash is stored) · never ship a key in client-side code — call from a server. One audio source per call: if the OpenCall web app is bridging the call, don't also join from the API.</p>`;
+}
+function connectExample(kind, keyRef) {
+  const K = keyRef || '<YOUR_API_KEY>';
+  const B = 'https://ijrfqjxdajgoaysazxle.supabase.co/rest/v1/rpc';
+  const ANON = SUPABASE_ANON_KEY;
+  if (kind === 'status') return `curl -X POST '${B}/api_status' \\
+  -H 'apikey: ${ANON}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"p_key":"${K}"}'`;
+  if (kind === 'sms') return `curl -X POST '${B}/api_send_sms' \\
+  -H 'apikey: ${ANON}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"p_key":"${K}","p_to":"+995599123456","p_body":"Hello from my app!"}'`;
+  if (kind === 'getsms') return `curl -X POST '${B}/api_get_sms' \\
+  -H 'apikey: ${ANON}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"p_key":"${K}","p_limit":20}'`;
+  if (kind === 'call') return `curl -X POST '${B}/api_place_call' \\
+  -H 'apikey: ${ANON}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"p_key":"${K}","p_to":"+995599123456"}'
+# → returns the call id; your phone starts dialing immediately`;
+  if (kind === 'poll') return `curl -X POST '${B}/api_get_call' \\
+  -H 'apikey: ${ANON}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"p_key":"${K}","p_call_id":"<call id from step 4>"}'
+# status: created → dialing → ringing → answered → ended (duration_seconds set)`;
+  return '';
+}
+function tabConnect() {
+  const active = apiKeys.filter(k => !k.revoked), revoked = apiKeys.filter(k => k.revoked);
+  const sel = docKeySel && apiKeys.find(k => k.id === docKeySel && !k.revoked) ? docKeySel : (active[0] ? active[0].id : null);
+  const selRef = freshApiKey ? freshApiKey.key : (sel ? (apiKeys.find(k => k.id === sel).prefix + '…') : null);
+  return `
+  <div class="card">
+    <h2>Connect other apps to your number</h2>
+    <p class="muted">Mint an API key and any web app, script, or automation can send SMS and place real cellular calls <em>from your connected SIM</em> — the same free gateway your phone provides. Revoke any key instantly.</p>
+
+    <label class="label">New key name — the app that will use it</label>
+    <input class="input" id="api-key-name" placeholder="e.g. CRM reminders bot" value="${esc(newApiKeyName)}" oninput="newApiKeyName=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();createApiKey()}" autocomplete="off">
+    <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="createApiKey()">＋ Create API key</button>
+    <div id="app-err"></div>
+
+    ${freshApiKey ? `<div class="keybox" id="fresh-key">
+      <strong class="mint">⚠ Copy your key now — it will never be shown again</strong>
+      <input class="input" style="margin-top:8px;font-family:monospace;font-size:.8rem" readonly value="${esc(freshApiKey.key)}" onclick="this.select()">
+      <div class="row" style="margin-top:8px">
+        <button class="btn btn-primary" onclick="copyText('${esc(freshApiKey.key)}','Key copied')">Copy key</button>
+        <button class="btn btn-ghost" onclick="freshApiKey=null;renderApp()">Done — I saved it</button>
+      </div>
+      <div class="tiny" style="margin-top:6px">Only a SHA-256 hash is stored. If you lose it, create a new key.</div>
+    </div>` : ''}
+
+    <div style="margin-top:16px">
+      <div class="row between"><h2>Your keys</h2><button class="btn btn-ghost" onclick="refreshApiKeys()">↻</button></div>
+      ${!apiKeysLoaded ? '<p class="muted">Loading…</p>' :
+        apiKeys.length === 0 ? '<p class="muted">No keys yet — create one above to connect your first app.</p>' : `
+        <table><thead><tr><th>Name</th><th>Key</th><th>Used</th><th>Requests</th><th></th></tr></thead><tbody>
+        ${apiKeys.map(k => `
+          <tr>
+            <td>${esc(k.name)}</td>
+            <td class="tiny" style="font-family:monospace">${esc(k.prefix)}…</td>
+            <td class="tiny">${relTime(k.last_used_at)}</td>
+            <td class="tiny">${k.request_count}</td>
+            <td>${k.revoked ? '<span class="pill failed">revoked</span>' : `<button class="btn btn-ghost" onclick="revokeApiKey('${k.id}')">Revoke</button>`}</td>
+          </tr>`).join('')}
+        </tbody></table>`}
+      ${active.length >= 10 ? '<p class="tiny" style="color:#fca5a5;margin-top:6px">Key limit reached (10 active) — revoke one to create another.</p>' : ''}
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="row between">
+      <h2>Use it from any app</h2>
+      ${active.length ? `<select class="input" style="width:auto;padding:6px 10px;font-size:.8rem" onchange="setActiveKeyForDocs(this.value)">
+        ${active.map(k => `<option value="${k.id}" ${k.id === sel ? 'selected' : ''}>${esc(k.name)} (${esc(k.prefix)}…)</option>`).join('')}
+      </select>` : ''}
+    </div>
+    ${active.length === 0
+      ? '<p class="muted">Create an API key above — copy-paste examples with your key filled in will appear here.</p>'
+      : connectDocs(selRef)}
   </div>
   ${tabsHtml()}`;
 }
@@ -1111,7 +1313,7 @@ function tabLinks() {
 }
 
 /* ---------------- UI helpers ---------------- */
-function setTab(t) { tab = t; renderApp(); }
+function setTab(t) { tab = t; renderApp(); if (t === 'connect' && !apiKeysLoaded) refreshApiKeys(); }
 function dialUser(id) { dial = id; tab = 'dialer'; renderApp(); placeCall(id); }
 function updateEstimate() {
   const el = document.getElementById('estimate'); if (el) el.innerHTML = estimateFor(dial);
@@ -1216,7 +1418,7 @@ function honestError(err) {
 }
 function fmtDur(s) { const m = Math.floor(s / 60), r = s % 60; return m ? `${m}m ${r}s` : `${r}s`; }
 function showToast(msg) { const t = document.createElement('div'); t.className = 'banner'; t.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:99'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 3500); }
-function showGuest(url) { document.getElementById('guest-out').innerHTML = `<div class="banner"><div class="tiny" style="margin-bottom:6px">Valid 60 minutes · free internet call to you</div><input class="input" value="${esc(url)}" readonly onclick="this.select()"><button class="btn btn-ghost" style="margin-top:8px;width:100%" onclick="navigator.clipboard.writeText('${esc(url)}');showToast('Link copied')">Copy link</button></div>`; }
+function showGuest(url) { document.getElementById('guest-out').innerHTML = `<div class="banner"><div class="tiny" style="margin-bottom:6px">Valid 60 minutes · free internet call to you</div><input class="input" value="${esc(url)}" readonly onclick="this.select()"><button class="btn btn-ghost" style="margin-top:8px;width:100%" onclick="copyText('${esc(url)}','Link copied')">Copy link</button></div>`; }
 
 /* ---------------- guest join (no account needed) ---------------- */
 let guestCtx = null; // {token, host:{hostId,hostName,hostIdentity}}
