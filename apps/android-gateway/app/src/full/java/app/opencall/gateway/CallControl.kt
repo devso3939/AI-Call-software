@@ -151,29 +151,31 @@ object CallControl {
     fun toggleMute(ctx: Context): Boolean? = setMuted(ctx, !FullCallService.micMuted)
 
     /** Mute explicitly. Returns the requested state, or null when no call live. */
-    fun setMuted(ctx: Context, muted: Boolean): Boolean? = try {
-        val hasLiveCall = FullCallService.calls.any {
-            FullCallService.stateLabel(it) == "active" || FullCallService.stateLabel(it) == "holding"
-        }
-        if (!hasLiveCall) return null
-        var applied = false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            // API 34+: the mute entry point lives on the InCallService, not
-            // the Call object. Requires the phone to have default-dialer
-            // privileges on some OEM builds; bridge-mic fallback covers the rest.
-            try { FullCallService.instance?.setMuted(muted); applied = true } catch (_: Exception) {}
-        }
-        if (!applied) {
-            // API < 34: mute the BRIDGE mic — the WebRTC track is what carries
-            // our voice to the browser and onward acoustically into the call.
-            WebRtcBridge.setBridgeMicMuted(muted)
-            try {
-                ctx.getSystemService(AudioManager::class.java)?.isMicrophoneMute = muted
-            } catch (_: Exception) {}
-        }
-        FullCallService.micMuted = muted
-        muted
-    } catch (e: Exception) { null }
+    fun setMuted(ctx: Context, muted: Boolean): Boolean? {
+        return try {
+            val hasLiveCall = FullCallService.calls.any {
+                FullCallService.stateLabel(it) == "active" || FullCallService.stateLabel(it) == "holding"
+            }
+            if (!hasLiveCall) return null
+            var applied = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // API 34+: the mute entry point lives on the InCallService, not
+                // the Call object. Requires the phone to have default-dialer
+                // privileges on some OEM builds; bridge-mic fallback covers the rest.
+                try { FullCallService.instance?.setMuted(muted); applied = true } catch (_: Exception) {}
+            }
+            if (!applied) {
+                // API < 34: mute the BRIDGE mic — the WebRTC track is what carries
+                // our voice to the browser and onward acoustically into the call.
+                WebRtcBridge.setBridgeMicMuted(muted)
+                try {
+                    ctx.getSystemService(AudioManager::class.java)?.isMicrophoneMute = muted
+                } catch (_: Exception) {}
+            }
+            FullCallService.micMuted = muted
+            muted
+        } catch (e: Exception) { null }
+    }
 
     /** Hold / unhold the active call. */
     fun setHeld(held: Boolean): Boolean? = try {
