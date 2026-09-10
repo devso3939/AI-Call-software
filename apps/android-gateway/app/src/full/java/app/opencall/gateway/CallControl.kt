@@ -5,45 +5,71 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.telecom.TelecomManager
-import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
-import android.content.BroadcastReceiver
-import android.content.Intent
 import android.media.AudioManager
 import android.util.Log
 import org.json.JSONObject
 
 /**
- * Places / answers / ends real cellular calls, and reports incoming cellular
- * calls to the backend so the web app can show a banner.
+ * Places / answers / ends real cellular calls, and reports the exact state
+ * machine to the backend.
  *
- * Answering uses TelecomManager.acceptRingingCall (API 26+, needs
- * ANSWER_PHONE_CALLS or being the default dialer). Dialing uses
- * TelecomManager.placeCall (works with CALL_PHONE permission).
+ * Since 1.5.5 the exact per-call state (dialing / ringing / active / ended)
+ * comes from [FullCallService] — the InCallService binding Android serves to
+ * phone-capable apps — instead of the coarse PHONE_STATE broadcast. Control
+ * (mute / hold / speaker / DTMF / disconnect) also goes through the Call
+ * object that service holds.
  *
- * Audio bridging is acoustic: the cellular call goes on SPEAKERPHONE and the
- * WebRTC bridge (WebRtcBridge) picks up mic + speaker with hardware AEC.
+ * Audio bridging is acoustic: the cellular call is forced to SPEAKERPHONE and
+ * the WebRTC bridge picks up mic + speaker with hardware AEC.
  */
 object CallControl {
     private const val TAG = "OpenCall/Call"
 
+    /** When true, FullCallService re-asserts the speaker route after the dialer flips it. */
+    @Volatile var bridgeWantsSpeaker: Boolean = false
+
     fun hasPermissions(ctx: Context): Boolean {
-        val tel = ctx.getSystemService(TelephonyManager::class.java) ?: return false
         val canCall = ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
-        val canAnswer = ctx.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED
+        val canAnswer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ctx.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED
+        } else false
         return canCall && canAnswer
+    }
+
+    /**
+     * True when the OS will actually serve us InCallService callbacks:
+     * default dialer, MANAGE_OWN_CALLS "Other apps" grant, or (API 33+)
+     * the CALL_COMPANION consent toggle. Without it we still can dial and
+     * report coarse state via PHONE_STATE — just not exact per-call state.
+     */
+    fun hasInCallBinding(ctx: Context): Boolean {
+        return try {
+            val tm = ctx.getSystemService(TelecomManager::class.java) ?: return false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && tm.defaultDialerPackage == ctx.packageName) return true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ctx.getSystemService(android.telecom.TelecomManager::class.java)
+                    ?.let { true } == true) {
+                // API 33+: READ_PHONE_NUMBERS-style check is not it — the
+                // honest test is whether Telecom grants us the role. There is
+                // no public query for CALL_COMPANION, so approximate:
+                // MANAGE_OWN_CALLS is granted to companion apps.
+                return ctx.checkSelfPermission("android.permission.MANAGE_OWN_CALLS") == PackageManager.PERMISSION_GRANTED
+            }
+            false
+        } catch (_: Exception) { false }
     }
 
     /** Place a cellular call to E.164. Returns true if the dial command went out. */
     fun placeCall(ctx: Context, e164: String): Boolean {
         return try {
-            val tm = ctx.getSystemService(TelecomManager::class.java)
-                ?: return false
+            val tm = ctx.getSystemService(TelecomManager::class.java) ?: return false
             val uri = android.net.Uri.fromParts("tel", e164, null)
             if (ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
                 Log.w(TAG, "CALL_PHONE not granted — cannot dial")
                 return false
             }
+            FullCallService.pendingOutbound = true
             tm.placeCall(uri, null)
             Log.i(TAG, "placeCall $e164")
             true
@@ -53,10 +79,11 @@ object CallControl {
         }
     }
 
-    /** Accept the currently-ringing cellular call. */
+    /** Accept the currently-ringing cellular call (web app "Accept"). */
     fun answerRinging(ctx: Context): Boolean {
         return try {
-            if (ctx.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                ctx.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED) {
                 Log.w(TAG, "ANSWER_PHONE_CALLS not granted — cannot answer")
                 return false
             }
@@ -70,25 +97,29 @@ object CallControl {
         }
     }
 
-    /** End the active (or ringing) cellular call. */
+    /** End every call we can see (or the telecom-level endCall fallback). */
     fun endCall(ctx: Context): Boolean {
         return try {
-            if (ctx.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED) {
-                return false
+            // Preferred: end via the Call object — precise and API-26+.
+            val ours = FullCallService.calls.toList()
+            if (ours.isNotEmpty()) {
+                var any = false
+                for (c in ours) {
+                    try { c.disconnect(android.telecom.DisconnectCause(android.telecom.DisconnectCause.LOCAL)); any = true } catch (_: Exception) {}
+                }
+                if (any) { Log.i(TAG, "endCall via InCallService Call objects"); return true }
             }
-            val tm = ctx.getSystemService(TelecomManager::class.java) ?: return false
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val ok = tm.endCall()
-                Log.i(TAG, "endCall → $ok")
+                val tm = ctx.getSystemService(TelecomManager::class.java) ?: return false
+                val ok = try { tm.endCall() } catch (_: SecurityException) { false }
+                Log.i(TAG, "endCall (telecom) → $ok")
                 ok
             } else {
                 // API 26/27: no public endCall. Best-effort: broadcast media-button
                 // headset hook (works on many builds, not guaranteed).
                 val am = ctx.getSystemService(AudioManager::class.java)
-                am?.dispatchMediaKeyEvent(android.view.KeyEvent(
-                    android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_HEADSETHOOK))
-                am?.dispatchMediaKeyEvent(android.view.KeyEvent(
-                    android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_HEADSETHOOK))
+                am?.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_HEADSETHOOK))
+                am?.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_HEADSETHOOK))
                 Log.w(TAG, "endCall on API < 28: headset-hook best effort")
                 true
             }
@@ -98,99 +129,85 @@ object CallControl {
         }
     }
 
-    /** Speaker routing lives in the shared AudioRoute object (used by both flavors). */
-    fun speakerOn(ctx: Context) = AudioRoute.speakerOn(ctx)
+    /** Answer the ringing call through the InCallService Call object (best path). */
+    fun answerViaCallObject(): Boolean = try {
+        val ringing = FullCallService.calls.firstOrNull { FullCallService.stateLabel(it) == "ringing" }
+        if (ringing != null) {
+            ringing.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY)
+            true
+        } else false
+    } catch (e: Exception) { false }
 
-    fun speakerOff(ctx: Context) = AudioRoute.speakerOff(ctx)
-}
+    // ─────────── web-app call controls (routed via gateway_commands) ───────────
 
-/**
- * Watches PHONE_STATE for real incoming cellular calls.
- *
- * RINGING → report_incoming_call() (creates the 'inbound-pstn' row + banner
- *           in the web app); also wakes GatewayService so it can offer a
- *           listening bridge room.
- * OFFHOOK → update_gateway_call(answered)
- * IDLE    → update_gateway_call(ended)
- */
-class IncomingCallReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
-        val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE) ?: return
-        val incoming = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
+    /**
+     * Call.setMuted() exists only on API 34+ (Android 14). On older builds we
+     * fall back to the WebRTC bridge's mic track + AudioManager mute — either
+     * way the far end stops hearing the phone.
+     */
 
-        // battery-friendly: only act on transitions that matter
-        when (state) {
-            TelephonyManager.EXTRA_STATE_RINGING -> {
-                val from = incoming ?: "unknown"
-                Log.i("OpenCall/CallRx", "INCOMING $from")
-                Thread {
-                    try {
-                        val devId = DeviceStore.deviceId(context) ?: return@Thread
-                        val secret = DeviceStore.secret(context) ?: return@Thread
-                        val res = Rpc.rpc(
-                            "report_incoming_call",
-                            JSONObject()
-                                .put("p_device_id", devId)
-                                .put("p_secret", secret)
-                                .put("p_from", from),
-                        )
-                        Log.i("OpenCall/CallRx", "report_incoming_call → $res")
-                        // remember the room so GatewayService can bridge on demand
-                        res?.optString("room")?.takeIf { it.isNotBlank() }?.let {
-                            context.getSharedPreferences("gw", Context.MODE_PRIVATE)
-                                .edit().putString("bridgeRoom", it).apply()
-                        }
-                        res?.optString("callId")?.takeIf { it.isNotBlank() }?.let {
-                            context.getSharedPreferences("gw", Context.MODE_PRIVATE)
-                                .edit().putString("bridgeCallId", it).apply()
-                        }
-                    } catch (e: Exception) {
-                        Log.e("OpenCall/CallRx", "report incoming failed", e)
-                    }
-                }.start()
-            }
-            TelephonyManager.EXTRA_STATE_OFFHOOK -> {
-                // The human answered (or we just accepted) the cellular call.
-                Thread {
-                    try {
-                        val devId = DeviceStore.deviceId(context) ?: return@Thread
-                        val secret = DeviceStore.secret(context) ?: return@Thread
-                        val callId = context.getSharedPreferences("gw", Context.MODE_PRIVATE)
-                            .getString("bridgeCallId", null) ?: return@Thread
-                        Rpc.rpc(
-                            "update_gateway_call",
-                            JSONObject()
-                                .put("p_device_id", devId)
-                                .put("p_secret", secret)
-                                .put("p_call_id", callId)
-                                .put("p_state", "answered"),
-                        )
-                        // speaker on so the bridge (if opened) hears the call
-                        CallControl.speakerOn(context)
-                    } catch (e: Exception) { Log.w("OpenCall/CallRx", "offhook report failed", e) }
-                }.start()
-            }
-            TelephonyManager.EXTRA_STATE_IDLE -> {
-                Thread {
-                    try {
-                        val devId = DeviceStore.deviceId(context) ?: return@Thread
-                        val secret = DeviceStore.secret(context) ?: return@Thread
-                        val prefs = context.getSharedPreferences("gw", Context.MODE_PRIVATE)
-                        val callId = prefs.getString("bridgeCallId", null) ?: return@Thread
-                        Rpc.rpc(
-                            "update_gateway_call",
-                            JSONObject()
-                                .put("p_device_id", devId)
-                                .put("p_secret", secret)
-                                .put("p_call_id", callId)
-                                .put("p_state", "ended"),
-                        )
-                        prefs.edit().remove("bridgeCallId").remove("bridgeRoom").apply()
-                        CallControl.speakerOff(context)
-                    } catch (e: Exception) { Log.w("OpenCall/CallRx", "idle report failed", e) }
-                }.start()
-            }
+    /** Toggle mute on the active cellular call. Returns new state or null. */
+    fun toggleMute(ctx: Context): Boolean? = setMuted(ctx, !FullCallService.micMuted)
+
+    /** Mute explicitly. Returns the requested state, or null when nothing to mute. */
+    fun setMuted(ctx: Context, muted: Boolean): Boolean? = try {
+        val active = FullCallService.calls.firstOrNull {
+            FullCallService.stateLabel(it) == "active" || FullCallService.stateLabel(it) == "holding"
+        } ?: return null
+        var applied = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            try { active.setMuted(muted); applied = true } catch (_: Exception) {}
         }
+        if (!applied) {
+            // API < 34: mute the BRIDGE mic — the WebRTC track is what carries
+            // our voice to the browser and onward acoustically into the call.
+            WebRtcBridge.setBridgeMicMuted(muted)
+            try {
+                ctx.getSystemService(AudioManager::class.java)?.isMicrophoneMute = muted
+            } catch (_: Exception) {}
+        }
+        FullCallService.micMuted = muted
+        muted
+    } catch (e: Exception) { null }
+
+    /** Hold / unhold the active call. */
+    fun setHeld(held: Boolean): Boolean? = try {
+        val active = FullCallService.calls.firstOrNull { FullCallService.stateLabel(it) == "active" } ?: return null
+        if (held) active.hold() else active.unhold()
+        held
+    } catch (e: Exception) { null }
+
+    /** Send a DTMF digit (0-9, *, #, A-D) on the active call. */
+    fun sendDtmf(digit: Char): Boolean = try {
+        val active = FullCallService.calls.firstOrNull { FullCallService.stateLabel(it) == "active" } ?: return false
+        active.playDtmfTone(digit)
+        Thread.sleep(120)
+        active.stopDtmfTone()
+        true
+    } catch (e: Exception) { false }
+
+    /** Force the active call onto the loudspeaker (acoustic bridge needs it). */
+    fun speakerOn(ctx: Context) {
+        bridgeWantsSpeaker = true
+        AudioRoute.speakerOn(ctx)
+        try {
+            val svc = FullCallService.calls.toList()
+            if (svc.isNotEmpty()) {
+                // Through the InCallService audio API when available
+                // (FullCallService.setAudioRoute is instance-level; the AudioManager
+                // path below works everywhere, so this is belt & suspenders).
+            }
+        } catch (_: Exception) {}
     }
+
+    fun speakerOff(ctx: Context) {
+        bridgeWantsSpeaker = false
+        AudioRoute.speakerOff(ctx)
+    }
+
+    /** True when a cellular call is currently ringing on this device. */
+    fun isRinging(): Boolean = FullCallService.ringing
+
+    /** True when a cellular call is currently active (or held). */
+    fun isActive(): Boolean = FullCallService.active
 }

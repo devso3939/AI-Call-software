@@ -47,6 +47,25 @@ class WebRtcBridge(
     companion object {
         private const val TAG = "OpenCall/WebRTC"
         private const val STUN = "stun:stun.l.google.com:19302"
+
+        /**
+         * Web-side mute (1.5.5): when true the phone's mic track stops sending
+         * audio — the far end of the cellular call no longer hears the phone.
+         * Applied to the live track AND to every track created afterwards
+         * (a bridge can be re-created mid-call after a WebRTC renegotiation).
+         */
+        @Volatile var bridgeMicMuted: Boolean = false
+            private set
+
+        fun setBridgeMicMuted(muted: Boolean) {
+            bridgeMicMuted = muted
+            synchronized(liveTracks) {
+                for (t in liveTracks) { try { t.setEnabled(!muted) } catch (_: Exception) {} }
+            }
+            Log.i(TAG, "bridge mic ${if (muted) "MUTED" else "live"}")
+        }
+
+        private val liveTracks = mutableListOf<AudioTrack>()
     }
 
     private var factory: PeerConnectionFactory? = null
@@ -120,7 +139,8 @@ class WebRtcBridge(
 
         audioSource = factory!!.createAudioSource(audioConstraints)
         audioTrack = factory!!.createAudioTrack("oc-audio", audioSource).also {
-            it.setEnabled(true)
+            it.setEnabled(!bridgeMicMuted)
+            synchronized(liveTracks) { liveTracks.add(it) }
         }
 
         pc = factory!!.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
@@ -325,6 +345,9 @@ class WebRtcBridge(
         } catch (_: Exception) {}
         try { pc?.close() } catch (_: Exception) {}
         pc = null
+        synchronized(liveTracks) {
+            try { audioTrack?.let { liveTracks.remove(it) } } catch (_: Exception) {}
+        }
         try { audioTrack?.setEnabled(false) } catch (_: Exception) {}
         try { audioSource?.dispose() } catch (_: Exception) {}
         audioSource = null

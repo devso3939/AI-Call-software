@@ -83,7 +83,7 @@
     <h2>Install OpenCall on Android</h2>
     <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.4 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.5 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
       <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
@@ -114,37 +114,15 @@
   </div>
 
   <div class="sec">
-    <h3>🟡 What's new in v1.5.4</h3>
+    <h3>🟡 What's new in v1.5.5</h3>
     <div class="ok" style="margin-bottom:10px">
-      <p><strong>Automatic mode (Gateway APK) — how you expected it to work:</strong> place a call in the web app → your phone <strong>dials the number by itself</strong> from your SIM (speaker auto-on) → when the person answers, the audio bridges into your browser. Send an SMS in the web app → your phone <strong>sends it by itself</strong> over the SIM and reports sent/delivered/failed back. Incoming cellular call while the gateway runs → accept it from the web app and talk in the browser. Everything in the background — <strong>zero taps on the phone</strong> after setup.</p>
+      <p><strong>Calls fully controlled from the web app:</strong> the gateway app now hooks into Android Telecom directly. Place a call from the web → the phone dials in the background and the stock dialer UI is <strong>auto-minimized</strong> — your screen stays on OpenCall. Live state (dialing → ringing → active → ended) streams to the web app, and the in-call bar gives you <strong>Mute phone, Speaker on/off, Hold, End</strong> over the real cellular call. Incoming cellular calls answer the same way.</p>
     </div>
-    <div class="warn" style="margin-bottom:10px">
-      <p><strong>Why Bridge asks you to tap instead:</strong> the Bridge APK deliberately has <strong>zero SMS/Phone permissions</strong> (that's why it installs with no Play Protect warning). Android's rule: without those permissions an app is <em>not allowed</em> to dial or send SMS on its own — a user tap on a notification is the only legal handoff. So Bridge = permission-free fallback with one tap per call/SMS; <strong>Gateway = fully automatic</strong>. If both are paired and online, calls and SMS automatically route to the Gateway.</p>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>Permission center:</strong> the app now asks for permissions <strong>one at a time</strong> (batched dialogs were getting auto-denied on Samsung), shows a <strong>✔/✘ row per permission</strong> with why it's needed, detects when Android will never ask again, and deep-links you to the exact Settings page. A built-in <strong>“Blocked at install?”</strong> guide covers Auto Blocker and Play Protect right on the phone.</p>
     </div>
-    <div class="ok">
-      <p><strong>One-time setup (both apps):</strong> pair with the 6-digit code → grant permissions when asked (Gateway needs SMS + Phone + Mic; Bridge only Mic) → <strong>Start gateway / Start bridge</strong>. Tip: entering your SIM number in the app makes the web app show your real number.</p>
-    </div>
-  </div>
-
-  <div class="sec">
-    <h3>🚨 Your exact message — decoded (v1.5.0)</h3>
-    <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">“<em>This app can request access to sensitive data. This can increase the risk of identity theft or financial fraud.</em>” is Google's <strong style="color:var(--text)">financial-fraud prevention</strong>: it blocks unverified apps that request <strong style="color:var(--text)">SMS or Phone permissions</strong>. It reads the app's <em>permission declarations + developer registration</em> — not the code. That's why rebuilding or re-signing never removed it, and why registered apps install silently.</p>
     <div class="warn">
-      <p><strong>So v1.5.0 ships two apps:</strong></p>
-      <p style="margin-top:8px">🟢 <strong>OpenCall Bridge</strong> (<code>app.opencall.bridge</code>) — internet calling with your microphone. <strong>Zero SMS/Phone permissions → installs with NO warning.</strong> Use this to call from the web app through your phone's mic &amp; speaker.</p>
-      <p style="margin-top:6px">🟡 <strong>OpenCall Gateway</strong> (<code>app.opencall.gateway2</code>) — full SIM power: SMS relay in/out, dial/answer cellular calls. The warning still appears for this one <em>until you register the app</em> — see the permanent fix below.</p>
-    </div>
-    <p style="font-size:.72rem;color:var(--muted);margin-top:10px">* "May show a warning" = Google's one-tap <strong>More details → Install anyway</strong> dialog — not a malware verdict. Register the app (section below) and it disappears forever.</p>
-  </div>
-
-  <div class="sec">
-    <h3>✅ Permanent fix — free app registration (~15 min, no gov ID)</h3>
-    <div class="steps">
-      <div class="step"><div class="n">1</div><p>On your computer open <strong>android.google.com/developerconsole</strong> → sign in with your Google account (enable <strong>2-Step Verification</strong> first if asked).</p></div>
-      <div class="step"><div class="n">2</div><p>Choose <strong>“Limited distribution”</strong> — free, no fee, no government ID, up to 20 devices. You'll need a Google payments profile (for your legal name/address — nothing is charged).</p></div>
-      <div class="step"><div class="n">3</div><p><strong>Register package name</strong> <code>app.opencall.gateway2</code> and add the signing-key SHA-256 fingerprint:<br><code style="font-size:.75rem;word-break:break-all">03:3C:51:17:75:9D:2A:B2:2B:8C:A6:16:56:76:5B:2D:F1:9B:9D:73:A1:CB:F0:C7:63:A3:F1:76:0E:6B:27:57</code></p></div>
-      <div class="step"><div class="n">4</div><p>On the <strong>Devices</strong> page add your phone: generate the request on the console, scan the QR / open the link <em>on the phone</em>, confirm the developer name, and enter the authorization code it produces.</p></div>
-      <div class="step"><div class="n">5</div><p>Install <strong>opencall-gateway.apk</strong> → no warning anymore — on this build and every future update (same key + registered package).</p></div>
+      <p><strong>SMS still blocked after granting?</strong> On One UI 6+ (Samsung) check <strong>Settings → Security and privacy → Auto Blocker</strong> — see the 🛡️ section below. On stock Android, <strong>Play Protect's financial-fraud warning</strong> is the usual culprit: <strong>More details → Install anyway</strong>, or register the app (section below) for a permanent fix.</p>
     </div>
   </div>
 
@@ -154,7 +132,7 @@
       <div class="step"><div class="n">1</div><p>Download the APK on your Android 8.0+ phone (recommended: <strong>Gateway</strong> for fully automatic SIM calls + SMS; Bridge only if you want the zero-permission tap-based fallback).</p></div>
       <div class="step"><div class="n">2</div><p>Open it. If the sensitive-data dialog appears on <strong>Gateway</strong>: tap <strong>More details → Install anyway</strong> (or register first, per the section above). <strong>Bridge never shows it.</strong></p></div>
       <div class="step"><div class="n">3</div><p>In the web app open the <strong>Devices</strong> tab → <strong>Create pairing code</strong> → type the 6 digits into the app → <strong>Pair</strong>.</p></div>
-      <div class="step"><div class="n">4</div><p>Tap <strong>Start gateway</strong> (Gateway) or <strong>Start bridge</strong> (Bridge). The status screen shows the exact version + package name — useful for verification.</p></div>
+      <div class="step"><div class="n">4</div><p><strong>Gateway asks permissions one at a time</strong> — allow each (SMS, phone, mic). If a dialog never appears, tap <strong>Blocked at install? Open unblock guide</strong> right in the app (Auto Blocker / Play Protect are the usual cause), or grant them in <strong>Settings → Apps → OpenCall Gateway → Permissions</strong>. Then tap <strong>Start gateway</strong> (Gateway) or <strong>Start bridge</strong> (Bridge).</p></div>
       <div class="step"><div class="n">5</div><p><strong>Bridge users:</strong> on the app's main screen enter your SIM number and tap <strong>Save SIM number</strong> — the web app then shows it under your device in the Devices tab.</p></div>
     </div>
     <div class="ok" style="margin-top:14px">
@@ -167,15 +145,29 @@
     <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">Since April 2026 this message comes from Google's new <strong style="color:var(--text)">Android Developer Verifier</strong>. It appears for every APK whose developer isn't registered with Google — <strong style="color:var(--text)">it is not a malware verdict</strong>, and no APK signature can turn it off. Apps you installed before that never saw this dialog because they came from registered developers. Here are your options:</p>
     <div class="tabs" id="otabs">
       <button class="otab on" data-pane="stock">Quick: 1-tap bypass</button>
+      <button class="otab" data-pane="autoblocker">Samsung Auto Blocker</button>
       <button class="otab" data-pane="samsung">Permanent: Advanced Flow</button>
-      <button class="otab" data-pane="xiaomi">Samsung specifics</button>
-      <button class="otab" data-pane="huawei">Xiaomi / Huawei</button>
+      <button class="otab" data-pane="xiaomi">Xiaomi / Huawei</button>
     </div>
     <div class="pane on" id="pane-stock">
       <div class="steps">
         <div class="step"><div class="n">1</div><p>Tap <strong>More details</strong> on the block dialog (small text link).</p></div>
         <div class="step"><div class="n">2</div><p>Tap <strong>Install anyway</strong> → <strong>OK</strong>. Takes 3 seconds, needed once per app.</p></div>
         <div class="step"><div class="n">3</div><p>Done — future updates with the same signature install without the dialog.</p></div>
+      </div>
+    </div>
+    <div class="pane" id="pane-autoblocker">
+      <div class="warn" style="margin:0 0 12px">
+        <p><strong>Auto Blocker is different from the verifier dialog above.</strong> It's Samsung's own switch (One UI 6+), it blocks <em>silently</em> — no “Install anyway” button, install just fails or the app installs crippled with no permission dialogs. If the quick bypass above did nothing on your Samsung, this is your blocker.</p>
+      </div>
+      <div class="steps">
+        <div class="step"><div class="n">1</div><p>Open <strong>Settings → Security and privacy → Auto Blocker</strong>.</p></div>
+        <div class="step"><div class="n">2</div><p>Turn <strong>Auto Blocker off</strong> while you install OpenCall Gateway — or keep it on and tap <strong>App allowed</strong> (allowed-apps list) and add OpenCall Gateway there.</p></div>
+        <div class="step"><div class="n">3</div><p>Install the APK again. Now the permission dialogs (SMS, phone, mic) will actually appear when the app asks.</p></div>
+        <div class="step"><div class="n">4</div><p>You can switch Auto Blocker back on after installing — OpenCall stays allowed. If you later re-install from scratch, repeat this once.</p></div>
+      </div>
+      <div class="ok">
+        <p><strong>Symptom checker:</strong> install fails with no reason shown → Auto Blocker. App installed but “Send SMS” / call buttons do nothing and no permission dialog ever popped → Auto Blocker suppressed the dialogs; open the app and tap <strong>Grant missing permissions</strong>, or enable them in <strong>Settings → Apps → OpenCall Gateway → Permissions</strong>.</p>
       </div>
     </div>
     <div class="pane" id="pane-samsung">
@@ -190,21 +182,23 @@
       <div class="steps">
         <div class="step"><div class="n">1</div><p>On the block dialog tap <strong>More details → Install anyway</strong>.</p></div>
         <div class="step"><div class="n">2</div><p>If a Settings screen opens instead: <strong>Settings → Apps → Install unknown apps</strong> → Chrome → Allow.</p></div>
-        <div class="step"><div class="n">3</div><p>Samsung sometimes doubles up with its own scanner — allow Chrome under both <strong>Settings → Security → Install unknown apps</strong> and <strong>Settings → Apps → Install unknown apps</strong>.</p></div>
-      </div>
-    </div>
-    <div class="pane" id="pane-huawei">
-      <div class="steps">
-        <div class="step"><div class="n">1</div><p><strong>Settings → Privacy protection → Special permissions → Install unknown apps</strong> → your browser → Allow.</p></div>
-        <div class="step"><div class="n">2</div><p>When MIUI/Huawei security warns mid-install, tap <strong>Install anyway</strong>.</p></div>
-        <div class="step"><div class="n">3</div><p>For “Blocked by Play Protect”: tap <strong>Details → Install anyway</strong>.</p></div>
+        <div class="step"><div class="n">3</div><p>MIUI: also enable <strong>Install via USB</strong> in Developer options if install fails silently. Huawei: <strong>Settings → Privacy protection → Special permissions → Install unknown apps</strong> → your browser → Allow.</p></div>
       </div>
     </div>
     <div class="warn">
       <p><strong>Why you can trust this APK:</strong> the full source is public, the build is produced automatically on GitHub Actions, and the APK is signed with the project's release key. Verify anytime at the <a href="https://github.com/devso3939/AI-Call-software" style="color:var(--mint400)">public repo</a>.</p>
     </div>
-    <div class="ok">
-      <p><strong>Want zero prompts forever?</strong> Google offers free <strong>limited-distribution developer accounts</strong> (up to 20 devices, no fee) — registering <code>app.opencall.gateway</code> there makes the verifier accept the app everywhere it's installed. See Google's “Android Developer Verification” docs.</p>
+  </div>
+
+  <div class="sec">
+    <h3>✅ Permanent fix — free app registration (~15 min, no gov ID)</h3>
+    <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">The “sensitive data / financial fraud” warning is Google's financial-fraud prevention: it blocks unverified apps that request <strong style="color:var(--text)">SMS or Phone permissions</strong> based on the app's <em>permission declarations + developer registration</em> — not the code. That's why rebuilding or re-signing never removes it. Registering the app makes every future install silent:</p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><p>On your computer open <strong>android.google.com/developerconsole</strong> → sign in with your Google account (enable <strong>2-Step Verification</strong> first if asked).</p></div>
+      <div class="step"><div class="n">2</div><p>Choose <strong>“Limited distribution”</strong> — free, no fee, no government ID, up to 20 devices. You'll need a Google payments profile (for your legal name/address — nothing is charged).</p></div>
+      <div class="step"><div class="n">3</div><p><strong>Register package name</strong> <code>app.opencall.gateway2</code> and add the signing-key SHA-256 fingerprint:<br><code style="font-size:.75rem;word-break:break-all">03:3C:51:17:75:9D:2A:B2:2B:8C:A6:16:56:76:5B:2D:F1:9B:9D:73:A1:CB:F0:C7:63:A3:F1:76:0E:6B:27:57</code></p></div>
+      <div class="step"><div class="n">4</div><p>On the <strong>Devices</strong> page add your phone: generate the request on the console, scan the QR / open the link <em>on the phone</em>, confirm the developer name, and enter the authorization code it produces.</p></div>
+      <div class="step"><div class="n">5</div><p>Install <strong>opencall-gateway.apk</strong> → no warning anymore — on this build and every future update (same key + registered package).</p></div>
     </div>
   </div>
 

@@ -318,6 +318,9 @@ let statsTimer = null;
 let bootPoll = null;
 let realtimeReady = false;
 let muteState = false;
+let gatewayMute = false;         // web→phone mute (queue_gateway_command), distinct from browser mic
+let gatewaySpeaker = true;       // last known phone speaker state
+let gatewayFull = false;         // phone runs the full 1.5.5 gateway (not lite, not old build)
 let tab = 'dialer';
 let dial = '';
 
@@ -536,6 +539,10 @@ async function refreshDevices() {
     // full (app.opencall.gateway2) = automatic dialing + SMS relay
     const v = (gatewayOnline && gatewayOnline.app_version) || '';
     gatewayFlavor = v.includes('-lite') ? 'bridge' : v.includes('-full') ? 'gateway' : gatewayFlavor;
+    // 1.5.5 full build reports e.g. "1.5.5-full": only that build can
+    // execute the new in-call control commands (queue_gateway_command
+    // rejects unsupported kinds anyway — this just keeps the UI honest)
+    gatewayFull = !v.includes('-lite') && v.startsWith('1.5.5');
     if (gatewayOnline && pairingCode) { pairingCode = null; showToast('Android device paired ✓'); }
   }
   if (me) renderApp();
@@ -698,6 +705,40 @@ async function declineGateway() {
   try { await sb.rpc('queue_end_call', { p_call_id: id }); } catch (e) {}
 }
 
+/* ---------------- gateway phone in-call controls (1.5.5) ----------------
+   Commands ride gateway_commands → the phone's GatewayService executes
+   them via the InCallService (exact mute on Android 14+, bridge-mic
+   fallback older). 1.5.4 phones answer call_state_probe with
+   icsBound:false → we honestly say "update the app". */
+async function gwCmd(kind, payload) {
+  if (!gatewayOnline?.id) { showToast('No gateway device online'); return null; }
+  const { data, error } = await sb.rpc('queue_gateway_command',
+    { p_device_id: gatewayOnline.id, p_kind: kind, p_payload: payload || {} });
+  if (error) { showToast('Command failed: ' + honestError(error)); return null; }
+  return data;
+}
+
+async function gwToggleMute(btn) {
+  if (!gatewayFull) { showToast('Update the phone app to 1.5.5 for this'); return; }
+  const want = !gatewayMute;
+  const id = await gwCmd(want ? 'mute_call' : 'unmute_call');
+  if (!id) return;
+  gatewayMute = want;
+  if (btn) btn.textContent = want ? 'Unmute phone' : 'Mute phone';
+  showToast(want ? 'Phone mic muted' : 'Phone mic live');
+}
+
+async function gwToggleSpeaker(btn) {
+  if (!gatewayFull) { showToast('Update the phone app to 1.5.5 for this'); return; }
+  const want = !gatewaySpeaker;
+  const id = await gwCmd(want ? 'speaker_on' : 'speaker_off');
+  if (!id) return;
+  gatewaySpeaker = want;
+  if (btn) btn.textContent = want ? 'Speaker off' : 'Speaker on';
+  showToast(want ? 'Phone speaker ON (audio flows to browser)' : 'Phone speaker OFF (call is on the earpiece)');
+}
+
+/* gatewayOnStatus — exact call state pushed by the phone's InCallService */
 function gatewayOnStatus(status) {
   if (!call.callId) return;
   if (status === 'ringing' && call.phase === 'dialing') { call.phase = 'ringing'; renderApp(); }
@@ -1012,6 +1053,7 @@ function endCallLocal(reason) {
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   remoteAudio.srcObject = null;
   muteState = false;
+  gatewayMute = false; gatewaySpeaker = true;
   const dur = call.startedAt ? Math.round((Date.now() - call.startedAt) / 1000) : 0;
   call = { callId:null, phase:'idle', remoteName:'', peerId:null, isGuest:false,
            quality:'unknown', rttMs:null, startedAt:null, routeNote:'', role:null };
@@ -1715,6 +1757,12 @@ function callBanner() {
     const bridgeNote = (call.isGateway && gatewayFlavor === 'bridge')
       ? `<div class="tiny mint">🔊 audio passes through your phone's speaker + mic (acoustic bridge) · keep the phone close, other sounds off</div>`
       : '';
+    // 1.5.5 gateway call: the phone's mic is the far end of the bridge —
+    // mute/speaker buttons drive IT, not the browser mic
+    const gwControls = (call.isGateway && gatewayFlavor !== 'bridge')
+      ? `<button class="btn btn-ghost" onclick="gwToggleMute(this)">${gatewayMute ? 'Unmute phone' : 'Mute phone'}</button>
+         <button class="btn btn-ghost" onclick="gwToggleSpeaker(this)">${gatewaySpeaker ? 'Speaker off' : 'Speaker on'}</button>`
+      : '';
     return `<div class="bigcall"><div class="row between">
       <div><strong>🔴 On call with ${esc(call.remoteName)}</strong>
       <div class="tiny">${call.isPstn ? esc(call.routeNote) + ' · ' : ''}quality: <span class="qdot ${call.quality}"></span> <span class="qlabel">${call.quality}</span>${call.isPstn ? '' : ' · rtt <span class="rtt">' + (call.rttMs ?? '…') + '</span> ms'}</div>
@@ -1722,7 +1770,8 @@ function callBanner() {
       ${call.stateNote ? `<div class="tiny micnote" style="color:#b45309">${esc(call.stateNote)}</div>` : ''}</div>
       <div class="row">
         ${listenOnly ? '<button class="btn btn-ghost" onclick="retryMic(this)">Retry mic</button>' : ''}
-        ${listenOnly ? '' : `<button class="btn btn-ghost" onclick="toggleMute(this)">${muteState ? 'Unmute' : 'Mute'}</button>`}
+        ${listenOnly || call.isGateway ? '' : `<button class="btn btn-ghost" onclick="toggleMute(this)">${muteState ? 'Unmute' : 'Mute'}</button>`}
+        ${gwControls}
         <button class="btn btn-danger" onclick="hangup()">End</button>
       </div></div></div>`;
   }

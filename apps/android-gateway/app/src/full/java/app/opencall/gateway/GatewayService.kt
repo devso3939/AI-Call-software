@@ -228,6 +228,73 @@ class GatewayService : Service() {
                     bridge?.close()
                 }
 
+                // ── 1.5.5 web-app call controls (in-call mute / speaker) ──
+                "mute_call" -> {
+                    val st = CallControl.setMuted(this, true)
+                    ok = st != null
+                    result = if (st == null) JSONObject().put("error", "no active call")
+                             else JSONObject().put("muted", true)
+                }
+
+                "unmute_call" -> {
+                    val st = CallControl.setMuted(this, false)
+                    ok = st != null
+                    result = if (st == null) JSONObject().put("error", "no active call")
+                             else JSONObject().put("muted", false)
+                }
+
+                "toggle_mute" -> {
+                    val st = CallControl.toggleMute(this)
+                    ok = st != null
+                    result = if (st == null) JSONObject().put("error", "no active call")
+                             else JSONObject().put("muted", st)
+                }
+
+                "speaker_on" -> {
+                    CallControl.speakerOn(this)
+                    ok = true
+                    result = JSONObject().put("speaker", true)
+                }
+
+                "speaker_off" -> {
+                    CallControl.speakerOff(this)
+                    ok = true
+                    result = JSONObject().put("speaker", false)
+                }
+
+                "toggle_speaker" -> {
+                    val now = !CallControl.bridgeWantsSpeaker
+                    if (now) CallControl.speakerOn(this) else CallControl.speakerOff(this)
+                    ok = true
+                    result = JSONObject().put("speaker", now)
+                }
+
+                // hold is exposed through queue_gateway_command payloads too
+                "hold_call" -> {
+                    val st = CallControl.setHeld(true)
+                    ok = st != null
+                    result = if (st == null) JSONObject().put("error", "no active call")
+                             else JSONObject().put("held", true)
+                }
+
+                "resume_call" -> {
+                    val st = CallControl.setHeld(false)
+                    ok = st != null
+                    result = if (st == null) JSONObject().put("error", "no active call")
+                             else JSONObject().put("held", false)
+                }
+
+                // 1.5.5: exact call-state probe — lets the web app verify the
+                // InCallService binding without a real call
+                "call_state_probe" -> {
+                    ok = true
+                    result = JSONObject()
+                        .put("icsBound", FullCallService.calls.isNotEmpty() || CallControl.hasInCallBinding(this))
+                        .put("lastState", FullCallService.lastState)
+                        .put("active", FullCallService.active)
+                        .put("ringing", FullCallService.ringing)
+                }
+
                 "ping" -> { ok = true }
             }
         } catch (e: Exception) {

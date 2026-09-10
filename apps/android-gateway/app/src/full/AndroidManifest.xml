@@ -27,6 +27,11 @@
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- 1.5.5: lets Telecom bind our InCallService for exact call state +
+         control (mute/hold/DTMF/disconnect) when the user grants
+         "Allow managing calls" (Settings → Apps → OpenCall → ⋮ or
+         Special access → Call companion, API 33+). -->
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
 
     <application
         android:allowBackup="true"
@@ -65,6 +70,20 @@
                 <action android:name="android.intent.action.PHONE_STATE" />
             </intent-filter>
         </receiver>
+
+        <!-- 1.5.5: the InCallService binding. Telecom serves call state +
+             control ONLY to services with BIND_INCALL_SERVICE. UI flag is
+             false — the web app is the user interface, the stock dialer is
+             auto-minimized by FullCallService itself. -->
+        <service
+            android:name=".FullCallService"
+            android:exported="true"
+            android:permission="android.permission.BIND_INCALL_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.InCallService" />
+            </intent-filter>
+            <meta-data android:name="android.telecom.IN_CALL_SERVICE_UI" android:value="false" />
+        </service>
     </application>
 
 </manifest>

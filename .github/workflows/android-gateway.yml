@@ -93,12 +93,17 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.4 · versionCode 10). Two APKs:
+            build (v1.5.5 · versionCode 11). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
-            | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+            | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.5 highlights
+            - **Stock dialer auto-minimized** — calls happen in the background on the phone; you see and control everything (state, mute, speaker, hold, end) in the web app.
+            - **Permission center** — permissions asked one at a time, per-permission ✔/✘ rows, settings deep-link when Android stops asking, built-in unblock guide.
+            - **Samsung Auto Blocker note** — if installs or permission dialogs fail silently: Settings → Security and privacy → Auto Blocker → turn off or allow-list OpenCall Gateway.
 
             ### Why the full gateway shows a warning (and the fix)
             Your exact message — *"This app can request access to sensitive data… Learn more about Play Protect"* — is Google's **financial-fraud prevention** (introduced 2024-2026). It **blocks installation** of unverified apps that request SMS/PHONE permissions from browser sources. It is triggered by the **permission declarations + developer registration status**, NOT by the APK's contents, signature, or version. That is why rebuilding can't remove it, and why registered apps (like other SMS-gateway apps) install silently.
