@@ -76,16 +76,17 @@
 
   <div class="hero">
     <h2>Install OpenCall on Android</h2>
-    <p>Two apps, one pairing: <strong style="color:var(--mint400)">Bridge</strong> for internet calling (installs with no warnings) and <strong style="color:#fcd34d">Gateway</strong> for full SIM power (SMS + cellular calls).</p>
+    <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.1 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.2 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
-      <span class="badge">🟢 Bridge: no Play Protect warning</span>
+      <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
+      <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
     </div>
-    <a class="dl" href="https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-bridge.apk"
-       download id="dlbtn" style="background:linear-gradient(135deg,var(--mint),var(--cyan))">🟢 Download OpenCall Bridge — installs with NO warning</a>
     <a class="dl" href="https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk"
-       download id="dlbtn2" style="background:rgba(251,191,36,.14);color:#fde68a;border:1px solid rgba(251,191,36,.4);box-shadow:none;margin-top:10px;font-size:.95rem">🟡 Download OpenCall Gateway (full SIM) — may show a warning*</a>
+       download id="dlbtn" style="background:linear-gradient(135deg,#f59e0b,#fbbf24);color:#1a1206">🟡 Download OpenCall Gateway — FULLY AUTOMATIC calls + SMS via your SIM (recommended)</a>
+    <a class="dl" href="https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-bridge.apk"
+       download id="dlbtn2" style="background:rgba(16,185,129,.12);color:var(--mint400);border:1px solid rgba(16,185,129,.4);box-shadow:none;margin-top:10px;font-size:.95rem">🟢 Download OpenCall Bridge — zero permissions, tap-to-dial / tap-to-send fallback</a>
     <div class="dlrow">
       <a href="app.html">Open web app instead</a>
       <a href="app.html" onclick="sessionStorage.setItem('pwaHint','1')">📲 Install as web app (no APK)</a>
@@ -95,16 +96,15 @@
   </div>
 
   <div class="sec">
-    <h3>🟢 What's new in v1.5.1 — Bridge now actually works</h3>
-    <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">v1.5.0's Bridge paired fine but had a bug: it never picked up commands from the server, so calls stayed <strong style="color:var(--text)">"created"</strong> and SMS stayed <strong style="color:var(--text)">"queued"</strong>. v1.5.1 fixes it with a <strong style="color:var(--text)">tap-to-dial / tap-to-send</strong> design that keeps Bridge 100% permission-free:</p>
+    <h3>🟡 What's new in v1.5.2</h3>
     <div class="ok" style="margin-bottom:10px">
-      <p><strong>📞 Calling via Bridge (v1.5.1):</strong> place a call in the web app → a heads-up notification appears on your phone: <em>"Tap to dial +995…"</em> → tap it, the dialer opens pre-filled, press call → the moment the person answers, audio is bridged into your browser. The web app shows <strong style="color:var(--text)">"Waiting for you to dial via your Android…"</strong> until you tap (90 s to tap, otherwise the call expires).</p>
+      <p><strong>Automatic mode (Gateway APK) — how you expected it to work:</strong> place a call in the web app → your phone <strong>dials the number by itself</strong> from your SIM (speaker auto-on) → when the person answers, the audio bridges into your browser. Send an SMS in the web app → your phone <strong>sends it by itself</strong> over the SIM and reports sent/delivered/failed back. Incoming cellular call while the gateway runs → accept it from the web app and talk in the browser. Everything in the background — <strong>zero taps on the phone</strong> after setup.</p>
     </div>
-    <div class="ok" style="margin-bottom:10px">
-      <p><strong>💬 SMS via Bridge (v1.5.1):</strong> send an SMS in the web app → a notification appears: <em>"Tap to send SMS"</em> → tap it, your messaging app opens pre-filled with the recipient + text → press send. The message shows <strong style="color:var(--text)">"tap the notification on your phone to send"</strong> in the web app until you do.</p>
+    <div class="warn" style="margin-bottom:10px">
+      <p><strong>Why Bridge asks you to tap instead:</strong> the Bridge APK deliberately has <strong>zero SMS/Phone permissions</strong> (that's why it installs with no Play Protect warning). Android's rule: without those permissions an app is <em>not allowed</em> to dial or send SMS on its own — a user tap on a notification is the only legal handoff. So Bridge = permission-free fallback with one tap per call/SMS; <strong>Gateway = fully automatic</strong>. If both are paired and online, calls and SMS automatically route to the Gateway.</p>
     </div>
-    <div class="warn">
-      <p><strong>One more thing to set once:</strong> open the Bridge app → enter your own SIM number (e.g. <code>+995598…</code>) → <strong>Save SIM number</strong>. This makes the web app show your real number instead of "not set" and marks you as a caller.</p>
+    <div class="ok">
+      <p><strong>One-time setup (both apps):</strong> pair with the 6-digit code → grant permissions when asked (Gateway needs SMS + Phone + Mic; Bridge only Mic) → <strong>Start gateway / Start bridge</strong>. Tip: entering your SIM number in the app makes the web app show your real number.</p>
     </div>
   </div>
 
@@ -133,7 +133,7 @@
   <div class="sec">
     <h3>🚀 Install in 4 steps</h3>
     <div class="steps">
-      <div class="step"><div class="n">1</div><p>Download the APK on your Android 8.0+ phone (links above — pick Bridge for zero warnings, Gateway for full SIM features).</p></div>
+      <div class="step"><div class="n">1</div><p>Download the APK on your Android 8.0+ phone (recommended: <strong>Gateway</strong> for fully automatic SIM calls + SMS; Bridge only if you want the zero-permission tap-based fallback).</p></div>
       <div class="step"><div class="n">2</div><p>Open it. If the sensitive-data dialog appears on <strong>Gateway</strong>: tap <strong>More details → Install anyway</strong> (or register first, per the section above). <strong>Bridge never shows it.</strong></p></div>
       <div class="step"><div class="n">3</div><p>In the web app open the <strong>Devices</strong> tab → <strong>Create pairing code</strong> → type the 6 digits into the app → <strong>Pair</strong>.</p></div>
       <div class="step"><div class="n">4</div><p>Tap <strong>Start gateway</strong> (Gateway) or <strong>Start bridge</strong> (Bridge). The status screen shows the exact version + package name — useful for verification.</p></div>

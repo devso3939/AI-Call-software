@@ -133,7 +133,8 @@ class GatewayService : Service() {
                         .put("p_device_id", devId)
                         .put("p_secret", secret)
                         .putOpt("p_battery", battery)
-                        .put("p_app_version", appVersion()),
+                        .put("p_app_version", appVersion())
+                        .putOpt("p_sim_number", DeviceStore.simNumber(this)),
                 )
 
                 // 2) claim commands (returns jsonb array — use rpcRaw!)

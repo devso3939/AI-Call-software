@@ -30,6 +30,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var codeInput: EditText
     private lateinit var pairBtn: Button
+    private lateinit var simInput: EditText
+    private lateinit var simBtn: Button
     private lateinit var startBtn: Button
     private lateinit var stopBtn: Button
     private lateinit var unpairBtn: Button
@@ -44,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
+        autoDetectSim() // re-try after the permission dialog closes
     }
 
     // ============ permissions ============
@@ -100,6 +103,21 @@ class MainActivity : AppCompatActivity() {
             setPadding(pad, pad / 2, pad, pad / 2)
         }
         pairBtn = button("Pair this phone") { doPair() }
+        simInput = EditText(this).apply {
+            hint = "Your SIM number (e.g. +995599123456)"
+            inputType = android.text.InputType.TYPE_CLASS_PHONE
+            setPadding(pad, pad / 2, pad, pad / 2)
+        }
+        simBtn = button("Save SIM number") {
+            val n = simInput.text.toString().trim()
+            if (!n.matches(Regex("^\\+[1-9][0-9]{3,15}$"))) {
+                toast("Enter the number in international format, e.g. +995599123456"); return@button
+            }
+            DeviceStore.saveSimNumber(this@MainActivity, n)
+            log("✔ SIM number saved — sent with every heartbeat")
+            refresh()
+        }
+        autoDetectSim()
         startBtn = button("Start gateway") {
             if (!DeviceStore.isPaired(this@MainActivity)) { toast("Pair first"); return@button }
             GatewayService.start(this@MainActivity)
@@ -121,6 +139,8 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 addView(statusText)
                 addView(codeInput)
+                addView(simInput)
+                addView(simBtn)
                 addView(pairBtn)
                 addView(startBtn)
                 addView(stopBtn)
@@ -158,6 +178,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+
+    /**
+     * Gateway holds READ_PHONE_STATE, so we can usually read the SIM's own
+     * number straight off the card and pre-fill the field — the user only
+     * types anything if the carrier left line1Number blank (common on some
+     * prepaid SIMs).
+     */
+    private fun autoDetectSim() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE)
+            != PackageManager.PERMISSION_GRANTED) return
+        Thread {
+            try {
+                val tm = getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+                val n = tm?.line1Number?.trim().orEmpty()
+                if (n.matches(Regex("^\\+[1-9][0-9]{3,15}$")) && DeviceStore.simNumber(this) == null) {
+                    DeviceStore.saveSimNumber(this, n)
+                    log("✔ SIM number auto-detected: $n")
+                    runOnUiThread { simInput.setText(n); refresh() }
+                }
+            } catch (_: Exception) { /* carrier didn't expose it — manual entry still works */ }
+        }.start()
+    }
 
     // ============ actions ============
 
@@ -206,6 +248,7 @@ class MainActivity : AppCompatActivity() {
         sb.append("Paired: ${if (paired) "yes" else "no"}\n")
         sb.append("Gateway service: ${if (svcRunning) "RUNNING" else "stopped"}\n")
         sb.append("Permissions: ${if (CallControl.hasPermissions(this)) "call OK" else "call perms missing"}\n")
+        sb.append("SIM number: ${DeviceStore.simNumber(this) ?: "not set"}\n")
         if (paired) {
             sb.append("Device: ${DeviceStore.deviceId(this)?.take(8)}…\n")
         }
@@ -214,6 +257,7 @@ class MainActivity : AppCompatActivity() {
 
         codeInput.visibility = if (paired) View.GONE else View.VISIBLE
         pairBtn.visibility = if (paired) View.GONE else View.VISIBLE
+        simInput.setText(DeviceStore.simNumber(this) ?: "")
         startBtn.isEnabled = paired && !svcRunning
         stopBtn.isEnabled = svcRunning
         unpairBtn.isEnabled = paired
