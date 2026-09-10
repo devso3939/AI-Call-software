@@ -1271,6 +1271,15 @@ function renderApp() {
             ${pstnConfigured === true && twilioReady ? '<span class="pill completed">📱 PSTN</span>' : ''}
           </div>
         </div>
+        ${gatewayFlavor === 'bridge' ? `
+        <div style="margin:0 0 14px;border:1px solid #f59e0b;border-radius:12px;background:linear-gradient(135deg,#451a03,#78350f);padding:14px 16px">
+          <div style="font-weight:800;color:#fcd34d;font-size:.95rem">⚠ Your phone is running OpenCall <u>Bridge</u> — that's why you get tap notifications</div>
+          <p class="tiny" style="color:#fde68a;margin:6px 0 0">Bridge has <strong>zero SMS/Phone permissions</strong>, so Android forbids it from dialing or texting by itself — a tap is the only legal handoff. For <strong>fully automatic background calling + SMS from your SIM</strong> (no taps, nothing opened on the phone), install the separate <strong>OpenCall Gateway</strong> APK instead, then pair it and Start gateway.</p>
+          <div class="row" style="gap:10px;margin-top:10px;flex-wrap:wrap">
+            <a href="https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk" class="btn btn-primary tiny" style="text-decoration:none">📲 Download Gateway (automatic) APK</a>
+            <a href="install.html#fix" class="btn btn-ghost tiny" style="text-decoration:none">Why can't Bridge auto-dial?</a>
+          </div>
+        </div>` : ''}
         ${body}
         <div id="app-err" style="margin-top:12px"></div>
       </main>

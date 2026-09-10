@@ -218,11 +218,11 @@ class MainActivity : AppCompatActivity() {
         if (paired) {
             sb.append("Device: ${DeviceStore.deviceId(this)?.take(8)}…\n")
         }
-        sb.append("\nHow it works: OpenCall rings a tap-to-dial / tap-to-send\n")
-        sb.append("notification — one tap opens your dialer or Messages app.\n")
-        sb.append("The mic then bridges the audio to your browser. No SMS or\n")
-        sb.append("call permissions needed. For automatic dialing install the\n")
-        sb.append("full OpenCall Gateway APK instead.\n")
+        sb.append("\n⚠ This is BRIDGE — tap mode only. Android forbids\n")
+        sb.append("auto-dialing/SMS without SMS+Phone permissions.\n")
+        sb.append("For FULLY AUTOMATIC calls + SMS from your SIM\n")
+        sb.append("(nothing to tap), install the separate OpenCall\n")
+        sb.append("GATEWAY apk: github.com/devso3939/AI-Call-software\n")
         statusText.text = sb.toString()
 
         codeInput.visibility = if (paired) View.GONE else View.VISIBLE
