@@ -235,8 +235,14 @@ class MainActivity : AppCompatActivity() {
                     toast("Already the phone app, or role unavailable — check Settings → Default apps")
                 }
             } else {
-                val tm = getSystemService(Context.TELECOM_SERVICE) as? android.telecom.TelecomManager
-                startActivity(tm?.createRegisterPhoneAccountIntent() ?: Intent(Settings.ACTION_SETTINGS))
+                // Pre-Android-10: change-default-dialer dialog (TelecomManager
+                // .createRegisterPhoneAccountIntent is not public API).
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    startActivity(Intent(android.telecom.TelecomManager.ACTION_CHANGE_DEFAULT_DIALER)
+                        .putExtra(android.telecom.TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, packageName))
+                } else {
+                    startActivity(Intent(Settings.ACTION_SETTINGS))
+                }
             }
         } catch (_: Exception) {
             toast("Open Settings → Apps → Default apps → Phone app → OpenCall Gateway")
