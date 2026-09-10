@@ -1,5 +1,5 @@
 /* OpenCall AI service worker — offline app shell + safe update flow */
-const CACHE = 'opencall-v14';
+const CACHE = 'opencall-v15';
 const SHELL = [
   '/AI-Call-software/app.html',
   '/AI-Call-software/index.html',

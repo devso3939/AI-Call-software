@@ -19,13 +19,36 @@ import android.util.Log
  * route through CallAudioState — the supported, reliable path — and only
  * fall back to AudioManager otherwise. ALSO: delay the flip until the call
  * is actually ACTIVE (telecom ignores route changes pre-CONNECT).
+ *
+ * 1.5.8 — THREE more holes closed for "no voice on the computer":
+ *
+ *  1. The WebRTC bridge flipped the speaker but never told FullCallService,
+ *     so the "re-assert speaker after ACTIVE" safety net never ran (the
+ *     bridgeWantsSpeaker flag stayed false). Result: telecom reverted the
+ *     route to earpiece a second later and the call went silent again.
+ *     The flag is now set HERE via reflection, so every speakerOn/speakerOff
+ *     caller (bridge included) gets the re-assert protection.
+ *
+ *  2. The first ACTIVE-state re-assert fired only ONCE (+350 ms) and the
+ *     AudioManager fallback was never re-applied on the lite path. Both
+ *     re-asserts now retry the FULL route application.
+ *
+ *  3. Hardware AEC on many devices cancels the phone's OWN speaker output
+ *     out of its own microphone — which is exactly the acoustic path the
+ *     bridge depends on. When a cellular call is active, the mic is captured
+ *     with echoCancellation DISABLED (see WebRtcBridge), letting the
+ *     loudspeaker→mic hop work while the browser handles echo on its side.
  */
 object AudioRoute {
 
     private const val TAG = "OpenCall/Audio"
 
+    /** Mirrors CallControl.bridgeWantsSpeaker (full flavor) so the InCallService re-assert engages. */
+    @Volatile var bridgeWantsSpeaker: Boolean = false
+
     /** Speaker ON so the WebRTC bridge can hear the call audio. */
     fun speakerOn(ctx: Context) {
+        bridgeWantsSpeaker = true
         try {
             val am = ctx.getSystemService(AudioManager::class.java) ?: return
             am.mode = AudioManager.MODE_IN_CALL
@@ -44,6 +67,7 @@ object AudioRoute {
     }
 
     fun speakerOff(ctx: Context) {
+        bridgeWantsSpeaker = false
         try {
             tryInCallSpeaker(false)
             if (!inCallRouteApplied) {
@@ -74,5 +98,24 @@ object AudioRoute {
         } catch (_: Throwable) {
             false
         }
+    }
+
+    /**
+     * 1.5.8 — complete re-assertion pass, safe to call repeatedly: the
+     * telecom path (when bound) AND the AudioManager fallback together.
+     * Used by the delayed re-asserts after the call goes ACTIVE, because a
+     * single flip right after connect is still often reverted by the OEM
+     * audio stack a beat later.
+     */
+    fun reassertSpeaker(ctx: Context) {
+        if (!bridgeWantsSpeaker) return
+        try {
+            val am = ctx.getSystemService(AudioManager::class.java) ?: return
+            am.mode = AudioManager.MODE_IN_CALL
+            am.isMicrophoneMute = false
+            tryInCallSpeaker(true)
+            if (!inCallRouteApplied) am.isSpeakerphoneOn = true
+            Log.i(TAG, "speaker re-asserted (inCallRouteApplied=$inCallRouteApplied)")
+        } catch (_: Exception) {}
     }
 }

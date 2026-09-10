@@ -413,6 +413,9 @@ class BridgeService : Service() {
                 DeviceStore.secret(this)!!,
                 onConnected = { runOnUiThread { onBridgeConnected() } },
                 onGone = { runOnUiThread { onBridgeGone() } },
+                // 1.5.8: lite is NOT an acoustic bridge — the mic carries the
+                // user's voice directly, so hardware AEC must stay ON here.
+                acousticBridge = false,
             )
         }
         return bridge!!

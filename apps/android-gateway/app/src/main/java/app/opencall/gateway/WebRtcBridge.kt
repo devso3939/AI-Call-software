@@ -43,6 +43,17 @@ class WebRtcBridge(
     private val onConnected: (() -> Unit)? = null,
     /** fires when the peer connection irrevocably FAILED (not transient disconnects) */
     private val onGone: (() -> Unit)? = null,
+    /**
+     * 1.5.8 — acoustic-bridge mode (full flavor): capture the mic WITHOUT
+     * echoCancellation. Hardware AEC removes the phone's OWN speaker output
+     * from its own mic — which is EXACTLY the path the bridge needs (speaker
+     * plays the far end → mic picks it up). With AEC on, the browser receives
+     * a perfectly clean "silence" track. The browser side handles echo on
+     * ITS end (its speakers → its mic), so nothing double-echoes. The lite
+     * flavor passes false: it relays the phone mic directly (no cellular
+     * acoustic hop), so AEC must stay on there.
+     */
+    private val acousticBridge: Boolean = false,
 ) {
     companion object {
         private const val TAG = "OpenCall/WebRTC"
@@ -131,8 +142,14 @@ class WebRtcBridge(
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
         }
 
+        // 1.5.8: echoCancellation follows the bridge mode. In acoustic-bridge
+        // mode (full flavor) hardware AEC would erase the far end from the mic
+        // (the far end reaches the mic ONLY via the loudspeaker), so it must
+        // be OFF. AGC + NS stay on: they help intelligibility and never remove
+        // the whole speaker path.
         val audioConstraints = MediaConstraints().apply {
-            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair(
+                "googEchoCancellation", if (acousticBridge) "false" else "true"))
             mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
         }

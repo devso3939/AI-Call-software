@@ -32,6 +32,11 @@
          "Allow managing calls" (Settings → Apps → OpenCall → ⋮ or
          Special access → Call companion, API 33+). -->
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <!-- 1.5.8: "Display over other apps". Apps holding it are EXEMPT from the
+         Android 10+ background-activity-start ban — that is what lets the
+         silent-dialer fallback (pressing Home over the stock dialer) actually
+         work while the gateway runs in the background. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:allowBackup="true"
@@ -62,6 +67,20 @@
             android:permission="android.permission.BROADCAST_SMS">
             <intent-filter android:priority="999">
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 1.5.8 FIX: the radio-level SMS send confirmation. SmsStatusReceiver
+             has existed since 1.5.5 but was NEVER declared here, so the
+             SMS_SENT broadcast had no target, gateway_report_sms never ran,
+             and every outbound message stayed "queued" in History even after
+             it actually went out. Declaring it (exported=false is fine — the
+             PendingIntent broadcast is app-internal thanks to setPackage). -->
+        <receiver
+            android:name=".SmsStatusReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.opencall.gateway.SMS_SENT" />
             </intent-filter>
         </receiver>
 

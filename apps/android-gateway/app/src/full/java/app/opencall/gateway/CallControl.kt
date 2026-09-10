@@ -26,8 +26,15 @@ import org.json.JSONObject
 object CallControl {
     private const val TAG = "OpenCall/Call"
 
-    /** When true, FullCallService re-asserts the speaker route after the dialer flips it. */
-    @Volatile var bridgeWantsSpeaker: Boolean = false
+    /**
+     * 1.5.8: single source of truth for "the bridge wants the loudspeaker"
+     * lives in AudioRoute (shared code) — WebRtcBridge's auto-speaker path
+     * sets it there directly, so this delegated property always reflects the
+     * real state (used by GatewayService's toggle_speaker).
+     */
+    var bridgeWantsSpeaker: Boolean
+        get() = AudioRoute.bridgeWantsSpeaker
+        private set(value) { AudioRoute.bridgeWantsSpeaker = value }
 
     fun hasPermissions(ctx: Context): Boolean {
         val canCall = ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
@@ -200,15 +207,13 @@ object CallControl {
 
     /** Force the active call onto the loudspeaker (acoustic bridge needs it). */
     fun speakerOn(ctx: Context) {
-        bridgeWantsSpeaker = true
-        // 1.5.7: AudioRoute now prefers InCallService.setAudioRoute (the
-        // telecom-owned path that actually sticks) and only falls back to
-        // AudioManager when no ICS binding exists.
+        // 1.5.8: AudioRoute.speakerOn sets the shared bridgeWantsSpeaker flag
+        // (single source of truth), so the InCallService re-assert engages
+        // no matter who requested the speaker.
         AudioRoute.speakerOn(ctx)
     }
 
     fun speakerOff(ctx: Context) {
-        bridgeWantsSpeaker = false
         AudioRoute.speakerOff(ctx)
     }
 

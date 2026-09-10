@@ -83,7 +83,7 @@
     <h2>Install OpenCall on Android</h2>
     <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.7 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.8 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
       <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
@@ -114,18 +114,21 @@
   </div>
 
   <div class="sec">
-    <h3>🟡 What's new in v1.5.7</h3>
+    <h3>🟡 What's new in v1.5.8</h3>
     <div class="ok" style="margin-bottom:10px">
-      <p><strong>Silent dialer:</strong> when the web app places a call through your phone, the stock dialer screen no longer pops up and stay — a persistent dismissal loop keeps the phone on your home screen while the call runs fully in the background.</p>
+      <p><strong>Voice now reaches your laptop:</strong> the gateway mic no longer runs echo cancellation (Android's AEC was erasing the far end from the mic input — the exact path the bridge needs), and the loudspeaker route is re-asserted the moment a call goes active. You hear the caller in the web app, and they hear you.</p>
     </div>
     <div class="ok" style="margin-bottom:10px">
-      <p><strong>Web audio + controls fixed:</strong> speaker routing now goes through Android Telecom (and is re-asserted the moment a call goes active), so you actually hear the customer in the web app. The web call panel has full in-call controls: mute, hold, speaker, DTMF keypad, live timer.</p>
+      <p><strong>Real call popup:</strong> calls now open as a floating call card — avatar, big timer, quality indicator, mute/speaker/hold/DTMF controls and a full-width red End button — instead of the small strip at the bottom.</p>
     </div>
     <div class="ok" style="margin-bottom:10px">
-      <p><strong>MP3 call recordings:</strong> every web call is recorded (both voices), saved as an MP3 in your history — play it inline or download it. Plus: input fields no longer lose focus while typing, and the whole UI is sharper on phones.</p>
+      <p><strong>SMS status fixed:</strong> messages that actually went out no longer stay "queued" in History — the radio-level sent confirmation is now recorded.</p>
     </div>
     <div class="ok" style="margin-bottom:10px">
-      <p><strong>v1.5.6 recap:</strong> fully background calls, agent-mode auto-answer, Telecom-driven inbound reporting.</p>
+      <p><strong>Silent dialer strengthened:</strong> a new "Display over other apps" grant row in the app exempts it from Android's background-start ban, so the stock call screen can be dismissed while the gateway is backgrounded. Call recordings now capture both voices correctly.</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.7 recap:</strong> silent dialer, web audio + in-call controls, MP3 recordings, DTMF keypad, responsive polish.</p>
     </div>
     <div class="warn">
       <p><strong>SMS still blocked after granting?</strong> On One UI 6+ (Samsung) check <strong>Settings → Security and privacy → Auto Blocker</strong> — see the 🛡️ section below. On stock Android, <strong>Play Protect's financial-fraud warning</strong> is the usual culprit: <strong>More details → Install anyway</strong>, or register the app (section below) for a permanent fix.</p>

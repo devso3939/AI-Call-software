@@ -65,6 +65,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bgManageBtn: Button
     private lateinit var agentToggle: Button
 
+    // 1.5.8 — "Display over other apps" row: grants SYSTEM_ALERT_WINDOW,
+    // which EXEMPTS the app from the Android 10+ background-activity-start
+    // ban. Without it the silent-dialer fallback (pressing Home over the
+    // stock dialer while the gateway is backgrounded) is silently blocked.
+    private lateinit var bgOverlayText: TextView
+    private lateinit var bgOverlayBtn: Button
+
     private val askAttempts = mutableMapOf<String, Int>()
     private val permanentDenied = mutableSetOf<String>()
     private var permQueue: MutableList<String> = mutableListOf()
@@ -259,6 +266,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * 1.5.8 — the system screen for "Display over other apps"
+     * (SYSTEM_ALERT_WINDOW). Holding this permission exempts the app from
+     * the Android 10+ background-activity-start ban, which is what lets the
+     * silent-dialer fallback keep pressing Home over the stock dialer while
+     * the gateway runs in the background.
+     */
+    private fun hasOverlayPermission(): Boolean = try {
+        Settings.canDrawOverlays(this)
+    } catch (_: Exception) { false }
+
+    private fun openOverlaySettings() {
+        try {
+            startActivity(Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.fromParts("package", packageName, null)))
+        } catch (_: Exception) {
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+            } catch (_: Exception) {
+                toast("Open Settings → Apps → Special app access → Display over other apps")
+            }
+        }
+    }
+
+    /**
      * Device-side blockers are the reason installs fail and permission
      * dialogs never show. Every path here is a system setting — nothing the
      * app can change itself, so the fix is guiding the user to the exact
@@ -345,6 +377,13 @@ class MainActivity : AppCompatActivity() {
         }
         bgManageBtn = button("Open app info") { openManageCallsScreen() }
 
+        // 1.5.8 — overlay grant row (needed for the silent-dialer fallback)
+        bgOverlayText = TextView(this).apply {
+            textSize = 12f
+            setPadding(pad, 4, pad, 0)
+        }
+        bgOverlayBtn = button("Allow display over other apps") { openOverlaySettings() }
+
         agentToggle = Button(this).apply {
             setPadding(16, 8, 16, 8)
             setOnClickListener { toggleAgentMode() }
@@ -353,6 +392,8 @@ class MainActivity : AppCompatActivity() {
         bgCard.addView(bgDialerRow)
         bgCard.addView(bgManageText)
         bgCard.addView(bgManageBtn)
+        bgCard.addView(bgOverlayText)
+        bgCard.addView(bgOverlayBtn)
         bgCard.addView(agentToggle)
 
         codeInput = EditText(this).apply {
@@ -604,6 +645,14 @@ class MainActivity : AppCompatActivity() {
         else
             "Optional but recommended: make OpenCall Gateway the phone app (Settings → Default apps → Phone). All call control then runs in the background — no dialer UI, screen can stay off."
         bgDialerBtn.visibility = if (dialer) View.GONE else View.VISIBLE
+
+        // 1.5.8 — overlay grant row
+        val overlayOk = hasOverlayPermission()
+        bgOverlayText.text = if (overlayOk)
+            "✔ Display over other apps allowed — silent dialer can dismiss the stock call screen in the background."
+        else
+            "Recommended: allow \"Display over other apps\". This is what lets the silent dialer hide the stock call screen while the gateway runs in the background."
+        bgOverlayBtn.visibility = if (overlayOk) View.GONE else View.VISIBLE
 
         val on = agentModeOn()
         FullCallService.autoAnswerInbound = on

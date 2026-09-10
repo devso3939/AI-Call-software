@@ -184,7 +184,11 @@ class FullCallService : InCallService() {
         super.onCallAudioStateChanged(audioState)
         // The dialer may flip the route back to earpiece — re-assert speaker
         // while the acoustic bridge is supposed to be listening.
-        if (CallControl.bridgeWantsSpeaker && audioState != null &&
+        // 1.5.8: read AudioRoute's flag (set by EVERY speakerOn caller,
+        // including WebRtcBridge's auto-bridge path) instead of only
+        // CallControl's (set only by explicit web-app speaker commands) —
+        // this is what makes the safety net engage on normal calls.
+        if (AudioRoute.bridgeWantsSpeaker && audioState != null &&
             (audioState.route and CallAudioState.ROUTE_SPEAKER) == 0) {
             try { setAudioRoute(CallAudioState.ROUTE_SPEAKER); Log.i(TAG, "re-asserted speaker route") } catch (_: Exception) {}
         }
@@ -211,16 +215,18 @@ class FullCallService : InCallService() {
             if (state == Call.STATE_ACTIVE) {
                 minimizeCallScreen()   // dialer re-shows itself
                 // 1.5.7 audio fix: telecom IGNORES route changes while the
-                // call is dialing/ringing — the AudioManager flip from
+                // call is dialing/ringing — the speaker flip from
                 // WebRtcBridge.onOffer/onAnswer gets reverted. Re-assert the
-                // speaker through the supported InCallService path a moment
-                // after the call goes ACTIVE (and again after 1.5 s for slow
-                // OEM audio stacks), so the far end actually reaches the mic
-                // and the browser hears the customer.
-                if (CallControl.bridgeWantsSpeaker) {
+                // speaker a moment after the call goes ACTIVE (and again
+                // after 1.5 s for slow OEM audio stacks), so the far end
+                // actually reaches the mic and the browser hears the customer.
+                // 1.5.8: gated on AudioRoute.bridgeWantsSpeaker (set by the
+                // bridge itself now) and each re-assert applies the FULL
+                // route (telecom path + AudioManager fallback), not just one.
+                if (AudioRoute.bridgeWantsSpeaker) {
                     Thread {
-                        try { Thread.sleep(350); setAudioRoute(CallAudioState.ROUTE_SPEAKER) } catch (_: Exception) {}
-                        try { Thread.sleep(1150); setAudioRoute(CallAudioState.ROUTE_SPEAKER) } catch (_: Exception) {}
+                        try { Thread.sleep(350); AudioRoute.reassertSpeaker(applicationContext) } catch (_: Exception) {}
+                        try { Thread.sleep(1150); AudioRoute.reassertSpeaker(applicationContext) } catch (_: Exception) {}
                     }.start()
                 }
             }

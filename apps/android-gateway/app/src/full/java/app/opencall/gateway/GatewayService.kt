@@ -359,7 +359,14 @@ class GatewayService : Service() {
 
     private fun ensureBridge(): WebRtcBridge {
         if (bridge == null) {
-            bridge = WebRtcBridge(this, DeviceStore.deviceId(this)!!, DeviceStore.secret(this)!!)
+            // 1.5.8: acousticBridge=true — mic captures WITHOUT hardware AEC
+            // so the loudspeaker→mic hop (the whole bridge path) survives.
+            bridge = WebRtcBridge(
+                this,
+                DeviceStore.deviceId(this)!!,
+                DeviceStore.secret(this)!!,
+                acousticBridge = true,
+            )
         }
         return bridge!!
     }

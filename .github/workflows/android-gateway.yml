@@ -93,12 +93,18 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.7 · versionCode 13). Two APKs:
+            build (v1.5.8 · versionCode 14). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.8 highlights
+            - **Voice now reaches the laptop** — the acoustic bridge is protected end-to-end: hardware echo cancellation is disabled on the gateway mic (AEC was erasing the far end from the mic input), the loudspeaker flag lives in one shared place, and telecom re-asserts the speaker route when the call goes ACTIVE.
+            - **Call popup, not a bottom strip** — every call state (dialing, ringing, active, incoming) renders as a real floating call card with avatar, big timer, quality row, controls, DTMF pad and a full-width End button.
+            - **SMS status fixed** — the radio-level sent confirmation receiver is now registered, so History stops showing "queued" for messages that actually went out.
+            - **Silent-dialer strengthened** — "Display over other apps" grant row added to the app (exempts it from the Android 10+ background-start ban, so the stock call screen can be dismissed while the gateway is backgrounded); recordings now capture both voices correctly.
 
             ### v1.5.7 highlights
             - **Silent dialer** — a persistent dismissal loop (plus a pre-dial dismissal and a service-side fallback) keeps the stock dialer off the screen while web-placed calls run fully in the background.
