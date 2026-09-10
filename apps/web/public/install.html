@@ -79,8 +79,8 @@
     <p>Turns your spare Android phone into a free cellular gateway for calls &amp; SMS — paired to your OpenCall account.</p>
     <div class="badges">
       <span class="badge">✓ Signed release build</span>
-      <span class="badge">✓ v1.3.0 · Android 8.0+</span>
-      <span class="badge">✓ No Play Store needed</span>
+      <span class="badge">✓ v1.4.0 · Android 8.0+</span>
+      <span class="badge">✓ Fresh app identity</span>
     </div>
     <a class="dl" href="https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk"
        download id="dlbtn">⬇️ Download APK (latest signed build)</a>
@@ -90,6 +90,26 @@
     </div>
     <div class="qr"><img alt="QR code to this page" id="qrimg"></div>
     <p class="qrt">Scan with your phone camera to open this page on your Android</p>
+  </div>
+
+  <div class="sec">
+    <h3>🚨 v1.4.0 users: fresh identity — read this first</h3>
+    <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">v1.4.0 ships a <strong style="color:var(--text)">brand-new app identity</strong> (new package name <code>app.opencall.gateway2</code> + new signing key) because Play Protect verdicts stick to the old identity forever. So: <strong style="color:var(--text)">uninstall any older OpenCall Gateway first</strong>, then install this one — it's a new app, not an update.</p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><p><strong>Uninstall</strong> the old OpenCall Gateway (Settings → Apps → OpenCall Gateway → Uninstall).</p></div>
+      <div class="step"><div class="n">2</div><p>Download the v1.4.0 APK above and open it. <strong>Important:</strong> before tapping Open, also clear stale verdicts: Settings → Apps → <strong>Google Play Store</strong> → Storage → <strong>Clear cache</strong>; same for <strong>Google Play services</strong>.</p></div>
+      <div class="step"><div class="n">3</div><p>Restart the phone, then open the APK again.</p></div>
+    </div>
+    <div class="warn" style="margin-top:14px">
+      <p><strong>Which message do you see? The wording decides the fix:</strong></p>
+      <p style="margin-top:8px">• <strong>"Blocked for your protection" + an "Install anyway" button</strong> → tap More details → Install anyway. This is the normal developer-verification prompt for unregistered developers; it is one tap and done.</p>
+      <p style="margin-top:6px">• <strong>"Blocked for your protection" with NO button at all</strong> (only Cancel/Delete) → the app got a malware-class verdict. Do the Play Store/Play services cache-clear above, restart, try once. If it persists on this fresh identity, report it via Play Protect's "report a false positive" link on the dialog.</p>
+      <p style="margin-top:6px">• <strong>"For your security, your phone isn't allowed to install unknown apps"</strong> → not Play Protect at all; allow your browser under Settings → Apps → Special access → Install unknown apps.</p>
+      <p style="margin-top:6px">• <strong>"App not installed"</strong> → you uninstalled nothing first, or the download was truncated. Re-download and retry.</p>
+    </div>
+    <div class="ok" style="margin-top:14px">
+      <p><strong>To check what's actually installed:</strong> open the Gateway app — it shows its exact version and package name on the status screen (v1.4.0 · app.opencall.gateway2). Screenshot it if you need to report an issue.</p>
+    </div>
   </div>
 
   <div class="sec">

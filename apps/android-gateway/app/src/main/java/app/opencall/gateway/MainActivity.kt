@@ -195,8 +195,14 @@ class MainActivity : AppCompatActivity() {
         val paired = DeviceStore.isPaired(this)
         val svcRunning = GatewayRunning.isRunning
 
+        // Surface exact version + package so a screenshot can prove which build is installed.
+        val pkgInfo = try { packageManager.getPackageInfo(packageName, 0) } catch (_: Exception) { null }
+        val vName = pkgInfo?.versionName ?: "?"
+        val vCode = pkgInfo?.let { if (android.os.Build.VERSION.SDK_INT >= 28) it.longVersionCode else @Suppress("DEPRECATION") it.versionCode.toLong() } ?: -1L
+
         val sb = StringBuilder()
-        sb.append("OpenCall SIM Gateway\n\n")
+        sb.append("OpenCall SIM Gateway v$vName ($vCode)\n")
+        sb.append("package: $packageName\n\n")
         sb.append("Paired: ${if (paired) "yes" else "no"}\n")
         sb.append("Gateway service: ${if (svcRunning) "RUNNING" else "stopped"}\n")
         sb.append("Permissions: ${if (CallControl.hasPermissions(this)) "call OK" else "call perms missing"}\n")

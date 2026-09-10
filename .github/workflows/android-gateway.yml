@@ -84,40 +84,44 @@ jobs:
           body: |
             **Always up to date.** This release is replaced automatically on every
             build, so the download link always gives you the newest
-            OpenCall Gateway APK (v1.3.0 · versionCode 4).
+            OpenCall Gateway APK (v1.4.0 · versionCode 5).
 
-            ### What's new in v1.3.0
-            Dropped READ_SMS and READ_PHONE_NUMBERS (restricted permission
-            categories) — incoming SMS uses the SMS_RECEIVED broadcast, so the
-            app now requests the minimum permissions a SIM gateway can run on.
-            Cleaner permission profile for Play Protect's automatic checks.
+            ### What's new in v1.4.0 — fresh app identity
+            The previous identity (`app.opencall.gateway` + old signing key) had
+            been flagged by Play Protect in an early build, and the block
+            **followed every later build** because verdicts attach to the app's
+            (package name, signing key) pair. v1.4.0 ships a **new package name**
+            (`app.opencall.gateway2`) and a **brand-new signing key** — Google has
+            never seen this identity before, so there is no cached verdict on it.
+            If the old app is installed, **uninstall it first** (it is not an
+            update — it's a new app), then install this one.
 
             ### Signed release build (v2 + v3 signature schemes)
-            This APK is **code-signed with a consistent release key** verified for
-            the modern Android signing schemes (v2 + v3, covering Android 7 → 15+;
-            v1/JAR is legacy-only and not used since the app requires Android 8+) —
-            updates install cleanly over previous versions.
+            Code-signed with the new consistent release key, verified for
+            v2 + v3 signature schemes (covers Android 7 → 15+).
 
             ### ⚠️ About "Blocked for your protection"
-            Since April 2026 Google's **Android Developer Verifier** shows this
-            warning for APKs whose developer is **not registered with Google**
-            (Android Developer Console / Play Console) — it is an identity check,
-            not a malware verdict, and it applies regardless of how the APK is
-            signed. To install:
+            Google's **Android Developer Verifier** shows this warning for APKs
+            whose developer is **not registered with Google** — it is an identity
+            check, not a malware verdict. If a block still appears on this fresh
+            identity:
             1. On the block dialog tap **More details → Install anyway** (1 time).
             2. Or enable the one-time **Advanced Flow**: Settings → Developer
                options → *Apps from unverified developers* → Allow, then wait
-               24 h once, and afterwards every unverified APK installs with a
-               single "Install anyway" tap.
-            Full brand-by-brand guide: **https://devso3939.github.io/AI-Call-software/install.html**
-            (Verified path for the future: free **limited-distribution** developer
-            account → register `app.opencall.gateway` → installs with no block.)
+               24 h once — afterwards every unverified APK installs with a
+               single tap.
+            3. **Zero-warning forever**: register the app under a free
+               **limited-distribution** developer account (up to 20 devices,
+               no government ID) — this is exactly how other sideloaded apps
+               install with no block.
+            Full guide: **https://devso3939.github.io/AI-Call-software/install.html**
 
             ### Install
-            1. Download `opencall-gateway.apk` on your Android phone
-            2. Open it → follow the guide above if Play Protect asks
-            3. Open the app → enter the 6-digit pairing code from the web app's **Devices** tab → Pair
-            4. Tap **Start gateway**
+            1. Uninstall any older OpenCall Gateway app first
+            2. Download `opencall-gateway.apk` on your Android phone
+            3. Open it → follow the guide above if Play Protect asks
+            4. Open the app → enter the 6-digit pairing code from the web app's **Devices** tab → Pair
+            5. Tap **Start gateway**
 
             ### No APK? Install the web app instead (zero warnings)
             Open https://devso3939.github.io/AI-Call-software/app.html in Chrome

@@ -8,11 +8,17 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "app.opencall.gateway"
+        // v1.4.0 IDENTITY RESET: new applicationId + fresh signing key.
+        // Play Protect attaches its "Blocked for your protection" verdict to the
+        // app's (packageName, signing key) pair; the previous identity had been
+        // flagged in an early build and every later build inherited the block.
+        // A new package name + new key = a brand-new identity Google has never
+        // flagged. Old app installs coexist; uninstall the old one manually.
+        applicationId = "app.opencall.gateway2"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3.0"
+        versionCode = 5
+        versionName = "1.4.0"
         resourceConfigurations += listOf("en")
     }
 
