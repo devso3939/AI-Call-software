@@ -16,7 +16,7 @@
     --key:rgba(20,27,41,.85);--key-hi:rgba(148,163,184,.10);
   }
   *{box-sizing:border-box}
-  body{margin:0;color:#e5eaf3;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;
+  body{margin:0;color:#e5eaf3;font-family:'Inter',ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;
     background:
       radial-gradient(900px 480px at 12% -8%, rgba(16,185,129,.14), transparent 60%),
       radial-gradient(900px 480px at 88% -8%, rgba(34,211,238,.10), transparent 60%),
@@ -38,11 +38,13 @@
     display:flex;align-items:center;justify-content:center;font-size:1.05rem;box-shadow:0 4px 16px rgba(16,185,129,.35)}
   .brand h1{font-size:1.02rem;margin:0;letter-spacing:-.02em;line-height:1.1}
   .brand .tiny{display:block;margin-top:1px}
-  .sidebtn{display:flex;align-items:center;gap:11px;width:100%;border:none;background:transparent;color:#8b98ad;
+  .sidebtn{position:relative;display:flex;align-items:center;gap:11px;width:100%;border:none;background:transparent;color:#8b98ad;
     padding:10px 12px;border-radius:11px;font-size:.88rem;font-weight:600;cursor:pointer;text-align:left;
-    transition:background .15s,color .15s;font-family:inherit}
-  .sidebtn:hover{background:rgba(148,163,184,.07);color:#cbd5e1}
+    transition:background .15s,color .15s,transform .15s;font-family:inherit}
+  .sidebtn:hover{background:rgba(148,163,184,.07);color:#cbd5e1;transform:translateX(2px)}
   .sidebtn.on{background:var(--sidebar-active);color:var(--mint400);box-shadow:inset 0 0 0 1px rgba(16,185,129,.22)}
+  .sidebtn.on::before{content:'';position:absolute;left:-12px;top:22%;bottom:22%;width:3px;border-radius:0 3px 3px 0;
+    background:linear-gradient(180deg,var(--mint),var(--cyan))}
   .sidebtn .ico{font-size:1rem;width:22px;text-align:center;flex-shrink:0}
   .sidebtn .badge{margin-left:auto;background:var(--mint);color:#04110c;border-radius:999px;font-size:.65rem;font-weight:700;padding:1px 7px}
   .sidefoot{margin-top:auto;padding:12px 10px 4px;border-top:1px solid var(--sidebar-border)}
@@ -84,20 +86,26 @@
   .btn:disabled{opacity:.45;cursor:not-allowed}
   .btn-primary{background:linear-gradient(135deg,var(--mint),var(--cyan));color:#04110c;box-shadow:0 6px 22px rgba(16,185,129,.30)}
   .btn-primary:hover:not(:disabled){box-shadow:0 10px 30px rgba(16,185,129,.45);transform:translateY(-1px)}
-  .btn-primary:active:not(:disabled){transform:translateY(0)}
+  .btn-primary:active:not(:disabled){transform:translateY(0) scale(.98)}
   .btn-ghost{background:rgba(148,163,184,.07);border-color:var(--ink600);color:#cbd5e1}
-  .btn-ghost:hover:not(:disabled){background:rgba(148,163,184,.14)}
+  .btn-ghost:hover:not(:disabled){background:rgba(148,163,184,.14);border-color:rgba(148,163,184,.32)}
   .btn-danger{background:#dc2626;color:#fff}
   .btn-danger:hover{background:#ef4444}
-  .input{width:100%;border-radius:12px;border:1px solid var(--ink600);background:rgba(20,27,41,.8);padding:10px 12px;color:#e5eaf3;font-size:.95rem;outline:none;transition:border-color .15s,box-shadow .15s}
-  .input:focus{border-color:var(--mint600);box-shadow:0 0 0 3px rgba(16,185,129,.18)}
+  .input{width:100%;border-radius:12px;border:1px solid var(--ink600);background:rgba(20,27,41,.8);padding:10px 12px;color:#e5eaf3;font-size:.95rem;outline:none;transition:border-color .15s,box-shadow .15s,background .15s}
+  .input:focus{border-color:var(--mint600);box-shadow:0 0 0 3px rgba(16,185,129,.18);background:rgba(23,31,48,.9)}
   .input::placeholder{color:#556379}
   .label{display:block;font-size:.75rem;color:#94a3b8;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.05em}
   .banner{border-radius:14px;border:1px solid rgba(52,211,153,.4);background:rgba(16,185,129,.08);padding:12px 14px;font-size:.85rem;margin-bottom:12px;backdrop-filter:blur(8px)}
   .err{border-radius:10px;background:rgba(127,29,29,.55);padding:10px 12px;font-size:.85rem;color:#fecaca;margin:10px 0}
-  table{width:100%;border-collapse:collapse;font-size:.85rem}
-  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--ink700)}
-  th{color:#94a3b8;font-weight:500;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em}
+  table{width:100%;border-collapse:separate;border-spacing:0;font-size:.85rem}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--ink700)}
+  th{color:#8b98ad;font-weight:600;font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;
+    border-bottom:1px solid var(--ink600);background:rgba(10,15,26,.5)}
+  th:first-child{border-radius:10px 0 0 0}
+  th:last-child{border-radius:0 10px 0 0}
+  tbody tr{transition:background .15s}
+  tbody tr:hover{background:rgba(148,163,184,.055)}
+  tbody tr:last-child td{border-bottom:none}
   .pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:.72rem;font-weight:600}
   .pill.completed{background:rgba(16,185,129,.15);color:var(--mint400)}
   .pill.ringing,.pill.active,.pill.answered{background:rgba(52,211,153,.25);color:var(--mint400)}
@@ -105,8 +113,8 @@
   .pill.queued{background:rgba(251,191,36,.15);color:#fcd34d}
   .pill.sent,.pill.delivered{background:rgba(16,185,129,.15);color:var(--mint400)}
   .pill.created,.pill.dialing{background:rgba(251,191,36,.15);color:#fcd34d}
-  .contact{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--ink700);border-radius:14px;background:rgba(20,27,41,.7);padding:10px 12px;margin-bottom:8px;transition:border-color .15s}
-  .contact:hover{border-color:rgba(52,211,153,.35)}
+  .contact{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--ink700);border-radius:14px;background:rgba(20,27,41,.7);padding:10px 12px;margin-bottom:8px;transition:border-color .15s,background .15s,transform .15s}
+  .contact:hover{border-color:rgba(52,211,153,.35);background:rgba(23,31,48,.8);transform:translateY(-1px)}
 
   /* ================= professional dialer keypad ================= */
   .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;max-width:320px;margin-left:auto;margin-right:auto}
@@ -185,28 +193,32 @@
   .callstage .route{position:absolute;top:22px;left:26px;font-size:.78rem;color:#64748b}
   .callstage .timers{font-variant-numeric:tabular-nums;font-size:.95rem;color:#cbd5e1;margin:-14px 0 22px}
 
-  /* ── 1.5.8 floating call popup (was: small bottom strip) ──
-     Real phone-style popup: centered card with avatar, status, big round
-     controls and the DTMF keypad. Does NOT block the whole app (unlike
-     .callstage) — the app stays visible and dimmed behind it. */
+  /* ── 1.5.9 floating call popup — premium phone-app look ── */
   .bigcall{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;
     padding:20px;pointer-events:none}
-  .bigcall::before{content:'';position:absolute;inset:0;background:rgba(7,11,20,.62);
-    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);animation:fadein .25s}
-  .callcard{position:relative;pointer-events:auto;width:100%;max-width:380px;background:linear-gradient(160deg,rgba(20,27,41,.97),rgba(10,15,24,.97));
-    border:1px solid var(--ink600);border-radius:26px;padding:30px 24px 24px;text-align:center;
-    box-shadow:0 30px 90px rgba(0,0,0,.65),0 0 60px rgba(16,185,129,.10);
-    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);animation:callpop .3s cubic-bezier(.2,.9,.3,1.2)}
-  @keyframes callpop{from{opacity:0;transform:translateY(26px) scale(.92)}to{opacity:1;transform:none}}
-  .callavatar{width:84px;height:84px;border-radius:999px;margin:0 auto 14px;background:linear-gradient(135deg,rgba(16,185,129,.25),rgba(34,211,238,.18));
-    display:flex;align-items:center;justify-content:center;font-size:2rem;
-    border:1px solid rgba(52,211,153,.4);box-shadow:0 0 50px rgba(16,185,129,.22)}
+  .bigcall::before{content:'';position:absolute;inset:0;background:rgba(5,8,15,.66);
+    backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);animation:fadein .25s}
+  .callcard{position:relative;pointer-events:auto;width:100%;max-width:380px;
+    background:linear-gradient(165deg,rgba(23,31,48,.98),rgba(9,13,22,.99) 68%);
+    border:1px solid rgba(148,163,184,.20);border-radius:28px;padding:32px 26px 24px;text-align:center;
+    box-shadow:0 40px 110px rgba(0,0,0,.72),0 0 0 1px rgba(16,185,129,.06),0 0 80px rgba(16,185,129,.08);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);animation:callpop .38s cubic-bezier(.2,.9,.3,1.15)}
+  @keyframes callpop{from{opacity:0;transform:translateY(30px) scale(.9)}to{opacity:1;transform:none}}
+  .callavatar{position:relative;width:88px;height:88px;border-radius:999px;margin:0 auto 16px;
+    background:linear-gradient(135deg,rgba(16,185,129,.30),rgba(34,211,238,.20));
+    display:flex;align-items:center;justify-content:center;font-size:2.1rem;font-weight:700;
+    border:1px solid rgba(52,211,153,.45);box-shadow:0 0 60px rgba(16,185,129,.25),inset 0 0 24px rgba(16,185,129,.10)}
+  .callavatar::after{content:'';position:absolute;inset:-7px;border-radius:999px;
+    border:1px solid rgba(52,211,153,.18);animation:avatarbreathe 3s ease-in-out infinite}
+  @keyframes avatarbreathe{0%,100%{opacity:.35;transform:scale(1)}50%{opacity:.9;transform:scale(1.05)}}
   .callavatar.pulse{animation:ringpulse 1.4s ease-in-out infinite}
-  .callname{font-size:1.25rem;font-weight:800;letter-spacing:-.02em;margin:0 0 4px}
+  .callname{font-size:1.3rem;font-weight:800;letter-spacing:-.02em;margin:0 0 4px}
   .callmeta{color:#94a3b8;font-size:.82rem;margin:0 0 4px}
   .callqrow{display:flex;align-items:center;justify-content:center;gap:7px;font-size:.75rem;color:#94a3b8;margin:2px 0 0}
-  .calltimerline{font-variant-numeric:tabular-nums;font-size:1.15rem;font-weight:800;color:#e5eaf3;margin:10px 0 16px}
-  .callctrls{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  .calltimerline{font-variant-numeric:tabular-nums;font-size:1.3rem;font-weight:800;color:#fff;margin:12px 0 18px;letter-spacing:.02em}
+  .callctrls{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .callctrls .btn{border-radius:999px;padding:11px 18px;transition:transform .15s,background .2s,box-shadow .2s}
+  .callctrls .btn:hover:not(:disabled){transform:translateY(-2px)}
   .callbadge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;
     border-radius:999px;padding:4px 12px;margin-bottom:10px}
   .callbadge.rec{color:#fca5a5;background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.35)}
@@ -214,10 +226,11 @@
   .callbadge.gw{color:var(--mint400);background:rgba(16,185,129,.10);border:1px solid rgba(16,185,129,.28)}
   .callnote{font-size:.75rem;color:#b45309;margin:6px 0 0}
   .callhint{font-size:.75rem;color:var(--mint400);margin:6px 0 0}
-  .callendbtn{width:100%;max-width:300px;margin:14px auto 0;padding:13px;border-radius:16px;border:none;
-    background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;font-weight:800;font-size:.95rem;cursor:pointer;
-    box-shadow:0 10px 30px rgba(220,38,38,.35);transition:transform .12s}
-  .callendbtn:hover{transform:scale(1.02)}
+  .callendbtn{width:100%;max-width:300px;margin:16px auto 0;padding:14px;border-radius:999px;border:none;
+    background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;font-weight:800;font-size:.95rem;cursor:pointer;
+    box-shadow:0 12px 34px rgba(225,29,72,.38);transition:transform .15s,box-shadow .2s}
+  .callendbtn:hover{transform:scale(1.03);box-shadow:0 14px 40px rgba(225,29,72,.5)}
+  .callendbtn:active{transform:scale(.98)}
   .callbtnsrow{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:12px}
 
   .qdot{width:10px;height:10px;border-radius:999px;background:#64748b;display:inline-block}
@@ -232,8 +245,32 @@
   .copybtn:hover{background:rgba(148,163,184,.16)}
   .charcount{font-size:.7rem;color:#64748b;text-align:right;margin-top:2px}
   .charcount.over{color:#fca5a5}
+  .toast-in{animation:toastin .28s cubic-bezier(.2,.9,.3,1.1)}
+  @keyframes toastin{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:translateY(0)}}
   .keybox{border:1px solid var(--mint600);border-radius:12px;background:rgba(16,185,129,.08);padding:12px;margin-top:10px;box-shadow:0 0 24px rgba(16,185,129,.12) inset}
   @media (prefers-reduced-motion:no-preference){.btn{transition:background .15s,border-color .15s,transform .15s,box-shadow .15s}}
+
+  /* ================= 1.5.9 polish: empty states / transitions / a11y ================= */
+  /* friendly empty states with icon + title + hint instead of a bare grey line */
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:30px 18px;color:#94a3b8}
+  .empty .eico{font-size:1.9rem;margin-bottom:10px;width:58px;height:58px;border-radius:18px;display:flex;align-items:center;
+    justify-content:center;background:rgba(148,163,184,.07);border:1px solid var(--ink700);box-shadow:0 8px 24px rgba(0,0,0,.25)}
+  .empty .etitle{font-size:.92rem;font-weight:650;color:#cbd5e1;margin-bottom:3px}
+  .empty .ehint{font-size:.78rem;color:#64748b;max-width:340px;line-height:1.5}
+  /* tab content gets a gentle slide-in so switching feels alive, not flickery */
+  .main>div{animation:viewin .26s cubic-bezier(.2,.8,.3,1)}
+  @keyframes viewin{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+  /* keyboard focus rings — visible for keyboard users, hidden for mouse users */
+  :focus-visible{outline:2px solid var(--mint400);outline-offset:2px;border-radius:10px}
+  .btn:focus-visible,.key:focus-visible,.sidebtn:focus-visible{outline-offset:3px}
+  /* monospace code blocks: branded top bar, subtle line highlight on hover */
+  pre.code{border-radius:12px;box-shadow:0 8px 22px rgba(0,0,0,.3)}
+  pre.code::before{content:'bash';display:block;color:#526077;font-family:inherit;font-size:.62rem;font-weight:700;
+    text-transform:uppercase;letter-spacing:.14em;margin:0 0 8px;user-select:none}
+  /* login / guest cards: subtle top hairline glow */
+  .authcard{position:relative;overflow:hidden}
+  .authcard::before{content:'';position:absolute;top:0;left:18%;right:18%;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(52,211,153,.55),transparent)}
 
   /* ================= 1.5.7 responsive / mobile polish ================= */
   @media (max-width:640px){
@@ -267,14 +304,18 @@
   }
 
   /* ================= 1.5.7 table overflow handling ================= */
-  .tablewrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .tablewrap table{min-width:640px}
+  .tablewrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--ink700);border-radius:12px;background:rgba(10,15,24,.35)}
+  .tablewrap table{min-width:640px;border-collapse:separate;border-spacing:0}
+  .tablewrap th{position:sticky;top:0}
 
   /* iOS Safari: real viewport height (fixes keyboard jump) */
   body{min-height:100dvh}
   @supports not (height:100dvh){body{min-height:100vh}}
 </style>
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#070b14">
@@ -596,6 +637,10 @@ let freshApiKey = null;          // {id,name,key,prefix} — plaintext shown exa
 let docKeySel = null;            // key id referenced by the copy-paste docs
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* esc() is for HTML content — NOT safe inside inline JS strings: it turns '
+   into &#39; which the HTML parser decodes back to ' and breaks the literal.
+   jsArg() escapes for the JS-string-inside-an-attribute context. */
+const jsArg = s => String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
 /* ---------------- boot / auth ---------------- */
 async function boot() {
@@ -667,16 +712,27 @@ async function enterApp(p) {
   refreshSms();         // recent SMS threads
 }
 
-/* granular per-second UI update: touches text nodes only, never inputs */
+/* granular per-second UI update: touches text nodes only, never inputs.
+   [data-timer="dur"] → "1m 5s" (popup timer line), [data-timer="secs"] → "42s"
+   (dialing/ringing counters). The old code did a FULL renderApp() here every
+   second on the Devices tab — that destroyed focus (and any typing) and froze
+   the call-popup timer because the popup had no matching class hooks. */
 function uiTick() {
-  // pairing-code countdown (Devices tab)
-  if (tab === 'devices' && pairingCode) renderApp();
-  // elapsed call time in the call banner / dialing banners
-  const st = document.querySelector('.callsecs');
-  if (st && call.startedAt) st.textContent = Math.floor((Date.now() - call.startedAt) / 1000) + 's';
-  // on-phone banner: also show duration next to "talking on the handset"
-  const op = document.querySelector('.onphone-secs');
-  if (op && call.startedAt) op.textContent = fmtDur(Math.floor((Date.now() - call.startedAt) / 1000));
+  if (call.startedAt) {
+    const s = Math.floor((Date.now() - call.startedAt) / 1000);
+    document.querySelectorAll('[data-timer]').forEach(el => {
+      el.textContent = el.dataset.timer === 'dur' ? fmtDur(s) : s + 's';
+    });
+  }
+  // pairing-code countdown (Devices tab) — targeted text update, never renderApp()
+  if (tab === 'devices' && pairingCode) {
+    const fresh = Date.now() - pairingAt < 15 * 60000;
+    if (!fresh) { pairingCode = null; renderApp(); }          // one-time transition
+    else {
+      const mins = document.querySelector('[data-pairmins]');
+      if (mins) mins.textContent = String(Math.max(0, Math.ceil((15 * 60000 - (Date.now() - pairingAt)) / 60000)));
+    }
+  }
 }
 
 /* ---------------- PSTN: real phone calls (Twilio Voice) ----------------
@@ -747,6 +803,7 @@ function wireTwilioCall(c) {
 
 /* place a real phone call: DB row first (honest record), then Twilio dials the number */
 async function placePstnCall(e164) {
+  if (call.phase !== 'idle') { showToast('Already in a call — end it first'); return; }
   const dest = e164.replace(/[\s()-]/g, '');
   if (!/^\+[1-9][0-9]{5,15}$/.test(dest)) { setError('Enter the number in international format, e.g. +995599123456'); return; }
   setError('');
@@ -901,6 +958,7 @@ function fallbackCopy(txt, done) {
 
 /* outbound: real cellular call dialed by your Android — free, your caller ID */
 async function placeGatewayCall(e164) {
+  if (call.phase !== 'idle') { showToast('Already in a call — end it first'); return; }
   const dest = e164.replace(/[\s()-]/g, '');
   if (!/^\+[1-9][0-9]{5,15}$/.test(dest)) { setError('Enter the number in international format, e.g. +995599123456'); return; }
   setError('');
@@ -1191,9 +1249,19 @@ async function sendSignal(kind, data) {
   } catch {}
 }
 
+/* signals that arrive before the peer connection exists (gateway phone can
+   offer the moment we register, before startMedia has created pc). They are
+   queued here and drained by startMedia() — the old code silently dropped
+   them and eventSeq advanced past, so the call connected with no audio. */
+let pendingSignals = [];
+/* ICE candidates that arrive before the remote SDP is set cannot be applied
+   yet (addIceCandidate throws); buffer and flush after setRemoteDescription. */
+let pendingIce = [];
+
 function handleSignal(p) {
-  if (!p || !p.kind || !pc) return;
+  if (!p || !p.kind) return;
   if (p.callId && call.callId && p.callId !== call.callId) return;
+  if (!pc) { pendingSignals.push(p); return; }
   (async () => {
     try {
       if (p.kind === 'offer') {
@@ -1211,13 +1279,23 @@ function handleSignal(p) {
       } else if (p.kind === 'answer') {
         if (pc.signalingState !== 'have-local-offer') return;         // stale or duplicate answer
         await pc.setRemoteDescription(new RTCSessionDescription(p.data));
+        flushPendingIce();
       } else if (p.kind === 'ice') {
-        if (p.data && p.data.candidate && pc.remoteDescription) { try { await pc.addIceCandidate(new RTCIceCandidate(p.data)); } catch {} }
+        if (p.data && p.data.candidate) {
+          if (!pc.remoteDescription) { pendingIce.push(p.data); return; }   // too early — hold it
+          try { await pc.addIceCandidate(new RTCIceCandidate(p.data)); } catch {}
+        }
       } else if (p.kind === 'bye') {
         endCallLocal('ended');
       }
     } catch (e) { console.warn('signal error', e); }
   })();
+}
+
+function flushPendingIce() {
+  if (!pendingIce.length) return;
+  const list = pendingIce; pendingIce = [];
+  list.forEach(c => { try { pc && pc.addIceCandidate(new RTCIceCandidate(c)); } catch {} });
 }
 
 /* wait (briefly) for ICE gathering so SDP carries all candidates — non-trickle */
@@ -1263,6 +1341,7 @@ function stopEventPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer 
 
 /* ---------------- calls (user-to-user) ---------------- */
 async function placeCall(dest) {
+  if (call.phase !== 'idle') { showToast('Already in a call — end it first'); return; }
   const d = (dest || dial).trim();
   if (!d) return;
   const dst = d.includes('@') ? d.toLowerCase() : d.toLowerCase() + '@opencall';
@@ -1332,6 +1411,7 @@ function endCallLocal(reason) {
   if (pc) { try { pc.close(); } catch {} pc = null; }
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   remoteAudio.srcObject = null;
+  pendingSignals = []; pendingIce = [];   // drop any signals queued for the dead call
   muteState = false;
   gatewayMute = false; gatewaySpeaker = true; gatewayHeld = false;
   dtmfOpen = false;
@@ -1358,30 +1438,28 @@ function getMic(ms = 15000) {
   });
 }
 
-function wireMicRetry(btn) {
-  btn.onclick = async () => {
-    btn.disabled = true; btn.textContent = 'Trying mic…';
-    const s = await getMic(12000);
-    if (s && pc && call.phase === 'active') {
-      localStream = s;
-      s.getTracks().forEach(t => pc.addTrack(t, s));
-      try {                                   // renegotiate so the peer starts receiving us
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        await waitIceGather(pc);
-        await sendSignal('offer', pc.localDescription);
-      } catch {}
-      call.stateNote = '';
-      const q = document.querySelector('.micnote'); if (q) q.textContent = '';
-      renderApp();
-      showToast('Microphone connected');
-    } else {
-      btn.disabled = false; btn.textContent = 'Retry mic';
-      const q = document.querySelector('.micnote'); if (q) q.textContent = 'still no microphone — you are in listen-only mode';
-    }
-  };
+async function retryMic(btn) {
+  if (btn) btn.disabled = true;
+  if (btn) btn.textContent = 'Trying mic…';
+  const s = await getMic(12000);
+  if (s && pc && call.phase === 'active') {
+    localStream = s;
+    s.getTracks().forEach(t => pc.addTrack(t, s));
+    try {                                   // renegotiate so the peer starts receiving us
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await waitIceGather(pc);
+      await sendSignal('offer', pc.localDescription);
+    } catch {}
+    call.stateNote = '';
+    renderApp();
+    showToast('Microphone connected');
+  } else {
+    if (btn) { btn.disabled = false; btn.textContent = 'Retry mic'; }
+    showToast('still no microphone — you are in listen-only mode');
+  }
 }
-window.retryMic = wireMicRetry;
+window.retryMic = retryMic;
 
 async function startMedia(role) {
   localStream = await getMic(15000);
@@ -1410,6 +1488,9 @@ async function startMedia(role) {
     // late candidates still go out, best-effort:
     if (e.candidate) sendSignal('ice', e.candidate.toJSON());
   };
+
+  // drain any offer/answer/ICE that arrived before this pc existed
+  if (pendingSignals.length) { const q = pendingSignals; pendingSignals = []; q.forEach(handleSignal); }
 
   if (role === 'caller') {
     const offer = await pc.createOffer();
@@ -1597,7 +1678,7 @@ function renderApp() {
   const t = titles[tab] || ['OpenCall', ''];
   root.innerHTML = `
     <div class="shell">
-      ${tab === 'dialer' ? '' : `<div class="sideback${sideOpen}" onclick="toggleSide()"></div>`}
+      <div class="sideback${sideOpen}" onclick="toggleSide()"></div>
       <aside class="sidebar" id="sidebar">
         <div class="brand">
           <div class="logo">☎</div>
@@ -1653,6 +1734,7 @@ function renderApp() {
       </main>
     </div>
     ${callBanner()}
+    <div id="toast-stack" style="position:fixed;top:0;left:0;right:0;z-index:200;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:8px"></div>
   `;
   wireDialKeys();
   // FOCUS RESTORE — put the pointer back exactly where it was
@@ -1661,9 +1743,6 @@ function renderApp() {
     if (again && (again.tagName === 'INPUT' || again.tagName === 'TEXTAREA' || again.tagName === 'SELECT')) {
       try { again.focus(); if (focusSel && typeof again.setSelectionRange === 'function') again.setSelectionRange(focusSel.start, focusSel.end); } catch {}
     }
-  } else if (focusTag && (focusTag === 'INPUT' || focusTag === 'TEXTAREA')) {
-    const same = Array.from(root.querySelectorAll(focusTag)).find(el => el === document.activeElement === false && !el.disabled && !el.readOnly);
-    if (same && document.activeElement === document.body) { try { same.focus(); } catch {} }
   }
 }
 
@@ -1706,7 +1785,7 @@ function tabDialer() {
       ${routeToggle}
       <div style="margin-top:16px;border-top:1px solid var(--ink700);padding-top:14px">
         <div class="tiny" style="text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Recent</div>
-        ${history.length === 0 ? '<p class="muted" style="margin:0">No calls yet — your recent calls will appear here.</p>' :
+        ${history.length === 0 ? '<div class="empty"><div class="eico">🕘</div><div class="etitle">No calls yet</div><div class="ehint">Your recent calls will appear here once you make your first one.</div></div>' :
           history.slice(0, 4).map(h => {
             const other = h.created_by === me.id
               ? (h.normalized_destination || h.requested_destination || 'unknown')
@@ -1723,7 +1802,7 @@ function tabDialer() {
         ${contacts.slice(0, 4).map(c => `
           <div class="row between" style="padding:6px 0">
             <div class="tiny"><strong style="color:#cbd5e1;font-size:.85rem">${esc(c.display_name)}</strong> · <span class="mint">${esc(c.internet_identity)}</span></div>
-            <button class="btn btn-ghost tiny" onclick="dialUser('${esc(c.internet_identity)}')">Call</button>
+            <button class="btn btn-ghost tiny" onclick="dialUser('${jsArg(c.internet_identity)}')">Call</button>
           </div>`).join('')}
       </div>
     </div>
@@ -1807,10 +1886,10 @@ function tabSms() {
     </div>
     <div class="card">
       <div class="row between"><h2>Inbox</h2><button class="btn btn-ghost tiny" onclick="refreshSms()">↻ Refresh</button></div>
-      ${smsList.length === 0 ? '<p class="muted">No messages yet.</p>' : smsList.map(m => `
+      ${smsList.length === 0 ? '<div class="empty"><div class="eico">💬</div><div class="etitle">No messages yet</div><div class="ehint">Send your first SMS — it goes out from your own SIM number via your paired Android.</div></div>' : smsList.map(m => `
       <div class="contact">
         <div style="min-width:0">
-          <strong>${m.direction === 'inbound' ? '← ' : '→ '}<a href="#" onclick="event.preventDefault();smsTo='${esc(m.direction === 'inbound' ? (m.from_number || '') : (m.to_number || ''))}';renderApp();setTimeout(()=>document.getElementById('sms-to')&&document.getElementById('sms-to').focus(),0)" style="text-decoration:none">${esc(m.direction === 'inbound' ? (m.from_number || '?') : (m.to_number || '?'))}</a></strong>
+          <strong>${m.direction === 'inbound' ? '← ' : '→ '}<a href="#" onclick="event.preventDefault();smsTo='${jsArg(m.direction === 'inbound' ? (m.from_number || '') : (m.to_number || ''))}';renderApp();setTimeout(()=>document.getElementById('sms-to')&&document.getElementById('sms-to').focus(),0)" style="text-decoration:none">${esc(m.direction === 'inbound' ? (m.from_number || '?') : (m.to_number || '?'))}</a></strong>
           <div style="margin-top:2px">${esc(m.body)}</div>
           <div class="tiny" style="margin-top:2px">${smsPill(m)} · ${relTime(m.created_at)}${m.error ? ' · <span style="color:#fca5a5">' + esc(m.error) + '</span>' : ''}</div>
         </div>
@@ -1832,7 +1911,7 @@ function tabDevices() {
   <div class="card">
     <h2>Your devices</h2>
     <p class="muted">Pair your Android phone once — it becomes your free gateway for real SMS and real cellular calls on your own number, worldwide.</p>
-    ${gatewayDevices.length === 0 ? '<p class="muted">No devices paired yet.</p>' : gatewayDevices.map(d => {
+    ${gatewayDevices.length === 0 ? '<div class="empty"><div class="eico">🤖</div><div class="etitle">No devices paired yet</div><div class="ehint">Install the OpenCall Android app, enter the pairing code shown when you tap “Pair a device”, and your phone becomes your free calling gateway.</div></div>' : gatewayDevices.map(d => {
       const fl = ((d.app_version || '').includes('-lite')) ? 'bridge' : ((d.app_version || '').includes('-full')) ? 'gateway' : null;
       const flBadge = fl === 'bridge'
         ? '<span class="pill queued">Bridge · tap-to-dial / tap-to-send</span>'
@@ -1858,7 +1937,7 @@ function tabDevices() {
         <button class="copybtn" onclick="copyText('${esc(pairingCode)}','Code copied')">Copy</button>
       </div>
       <div class="tiny" style="margin-top:6px">Open the OpenCall Gateway app on your Android → type this code → Pair. Valid 15 minutes, single use.
-     Expires in ${Math.max(0, Math.ceil((15 * 60000 - (Date.now() - pairingAt)) / 60000))} min.</div>
+     Expires in <span data-pairmins>${Math.max(0, Math.ceil((15 * 60000 - (Date.now() - pairingAt)) / 60000))}</span> min.</div>
     </div>` : ''}
   </div>`;
 }
@@ -1943,8 +2022,8 @@ function tabConnect() {
 
     <div style="margin-top:16px">
       <div class="row between"><h2>Your keys</h2><button class="btn btn-ghost" onclick="refreshApiKeys()">↻</button></div>
-      ${!apiKeysLoaded ? '<p class="muted">Loading…</p>' :
-        apiKeys.length === 0 ? '<p class="muted">No keys yet — create one above to connect your first app.</p>' : `
+      ${!apiKeysLoaded ? '<div class="empty"><div class="eico">🔌</div><div class="etitle">Loading keys…</div></div>' :
+        apiKeys.length === 0 ? '<div class="empty"><div class="eico">🔑</div><div class="etitle">No keys yet</div><div class="ehint">Create one above to connect your first app — CRM bots, automations, scripts.</div></div>' : `
         <div class="tablewrap"><table><thead><tr><th>Name</th><th>Key</th><th>Used</th><th>Requests</th><th></th></tr></thead><tbody>
         ${apiKeys.map(k => `
           <tr>
@@ -1967,7 +2046,7 @@ function tabConnect() {
       </select>` : ''}
     </div>
     ${active.length === 0
-      ? '<p class="muted">Create an API key above — copy-paste examples with your key filled in will appear here.</p>'
+      ? '<div class="empty"><div class="eico">🔑</div><div class="etitle">No API key yet</div><div class="ehint">Create an API key above — copy-paste examples with your key filled in will appear here.</div></div>'
       : connectDocs(selRef)}
     ${active.length && !freshApiKey ? '<p class="tiny" style="margin:10px 0 0">💡 Keys are shown only once at creation. To get copy-paste examples with a real key, mint a fresh one above.</p>' : ''}
   </div>`;
@@ -1977,14 +2056,14 @@ function tabContacts() {
   return `
   <div class="card">
     <h2>Contacts</h2>
-    ${contacts.length === 0 ? '<p class="muted">No other users yet — register a second account to test calls.</p>' :
+    ${contacts.length === 0 ? '<div class="empty"><div class="eico">👥</div><div class="etitle">No contacts yet</div><div class="ehint">Register a second OpenCall account and it will show up here for free internet calls.</div></div>' :
       contacts.map(c => `
       <div class="contact">
         <div>
           <strong>${esc(c.display_name)}</strong>
           <div class="tiny mint">${esc(c.internet_identity)}</div>
         </div>
-        <button class="btn btn-primary" onclick="dialUser('${esc(c.internet_identity)}')">Call</button>
+        <button class="btn btn-primary" onclick="dialUser('${jsArg(c.internet_identity)}')">Call</button>
       </div>`).join('')}
   </div>`;
 }
@@ -1994,7 +2073,7 @@ function tabHistory() {
   <div class="card">
     <div class="row between"><h2>History</h2><button class="btn btn-ghost tiny" onclick="refreshHistory()">↻ Refresh</button></div>
     <p class="tiny" style="margin:0 0 10px">Calls you make from the web app are recorded (both voices) and appear here as playable MP3s.</p>
-    ${history.length === 0 ? '<p class="muted">No calls yet.</p>' : `
+    ${history.length === 0 ? '<div class="empty"><div class="eico">🕘</div><div class="etitle">No calls yet</div><div class="ehint">Calls you make from the web app are recorded (both voices) and appear here as playable MP3s.</div></div>' : `
     <div class="tablewrap"><table><thead><tr><th>With</th><th>Route</th><th>Status</th><th>Duration</th><th>Recording</th></tr></thead><tbody>
     ${history.map(h => {
       const other = h.caller_kind === 'pstn'
@@ -2008,8 +2087,8 @@ function tabHistory() {
         <td><span class="pill ${esc(h.status)}">${esc(h.status)}</span></td>
         <td>${h.duration_seconds ? fmtDur(h.duration_seconds) : '—'}</td>
         <td>${h.recording_url ? `
-          <button class="btn btn-ghost tiny" onclick="playRecording('${h.id}','${esc(h.recording_url)}',this)">▶ Play</button>
-          <button class="btn btn-ghost tiny" onclick="downloadRecording('${h.id}','${esc(h.recording_url)}')">⬇ mp3</button>`
+          <button class="btn btn-ghost tiny" onclick="playRecording('${h.id}','${jsArg(h.recording_url)}',this)">▶ Play</button>
+          <button class="btn btn-ghost tiny" onclick="downloadRecording('${h.id}','${jsArg(h.recording_url)}')">⬇ mp3</button>`
           : '<span class="muted tiny">—</span>'}</td>
       </tr>`; }).join('')}
     </tbody></table></div>
@@ -2024,12 +2103,17 @@ function tabLinks() {
     <p class="muted">Anyone with the link can call you from their browser — no account, works over the public internet.</p>
     <button class="btn btn-primary" onclick="createGuestLink()">Create guest link</button>
     <div id="guest-out" style="margin-top:12px"></div>
+    <div class="empty" style="padding-top:20px"><div class="eico">🔗</div><div class="etitle">Share your personal dial-in</div><div class="ehint">Anyone with the link calls you straight from their browser — no account, no install, works over the public internet. Perfect for support lines, friends and family.</div></div>
   </div>`;
 }
 
 /* ---------------- UI helpers ---------------- */
 function setTab(t) { tab = t; renderApp(); if (t === 'connect' && !apiKeysLoaded) refreshApiKeys(); }
 function dialUser(id) { dial = id; tab = 'dialer'; renderApp(); placeCall(id); }
+/* helper for empty states */
+function emptyState(ico, title, hint) {
+  return `<div class="empty"><div class="eico">${ico}</div><div class="etitle">${esc(title)}</div>${hint ? `<div class="ehint">${esc(hint)}</div>` : ''}</div>`;
+}
 function updateEstimate() {
   const el = document.getElementById('estimate'); if (el) el.innerHTML = estimateFor(dial);
   const btn = document.getElementById('btnCall'); if (btn) { if (canCall(dial)) btn.removeAttribute('disabled'); else btn.setAttribute('disabled', ''); }
@@ -2074,7 +2158,7 @@ function callPanel() {
       ${call.isGateway ? (gwBridge ? 'via your Android (acoustic bridge)' : 'via your Android SIM') : ''}
     </div>
     <div class="callqrow">quality: <span class="qdot ${call.quality}"></span> <span class="qlabel">${call.quality}</span>${call.isPstn ? '' : ' · rtt <span class="rtt">' + (call.rttMs ?? '…') + '</span> ms'}</div>
-    <div class="calltimerline">${fmtDur(elapsed)}</div>
+    <div class="calltimerline" data-timer="dur">${fmtDur(elapsed)}</div>
     ${recording ? '<span class="callbadge rec">● REC · both voices → mp3 in history</span>' : ''}
     ${gatewayHeld ? '<span class="callbadge hold">⏸ on hold</span>' : ''}
     ${call.isGateway && !gwBridge ? '<span class="callbadge gw">🔊 audio flows to this computer</span>' : ''}
@@ -2127,7 +2211,7 @@ function callBanner() {
       <div class="callavatar pulse">🤖</div>
       <div class="callname">${bridge ? 'Waiting for you to dial' : 'Dialing'} ${esc(call.remoteName)}</div>
       <div class="callmeta">${bridge ? 'via your Android · tap the OpenCall notification' : 'via your Android · phone is dialing'}</div>
-      <div class="calltimerline"><span class="muted pulse">◉ ${secs}s</span>${bridge ? ' · expires after 90 s if not tapped' : ''}</div>
+      <div class="calltimerline"><span class="muted pulse" data-timer="secs">${secs}s</span>${bridge ? ' · expires after 90 s if not tapped' : ''}</div>
       <div class="callmeta">${esc(call.routeNote)}</div>
       <button class="callendbtn" onclick="hangup()">✕ End</button>`);
   }
@@ -2136,7 +2220,7 @@ function callBanner() {
       <div class="callavatar pulse">📱</div>
       <div class="callname">Dialing ${esc(call.remoteName)}</div>
       <div class="callmeta">connecting to phone network</div>
-      <div class="calltimerline"><span class="muted pulse">◉ ${secs}s</span></div>
+      <div class="calltimerline"><span class="muted pulse" data-timer="secs">${secs}s</span></div>
       <div class="callmeta">${esc(call.routeNote)}</div>
       <button class="callendbtn" onclick="hangup()">✕ End</button>`);
   }
@@ -2145,7 +2229,7 @@ function callBanner() {
       <div class="callavatar pulse">📞</div>
       <div class="callname">Calling ${esc(call.remoteName)}</div>
       <div class="callmeta">their phone is ringing</div>
-      <div class="calltimerline"><span class="muted pulse">◉ ${secs}s</span> · hangs up after ${RING_TIMEOUT_S} s if not answered</div>
+      <div class="calltimerline"><span class="muted pulse" data-timer="secs">${secs}s</span> · hangs up after ${RING_TIMEOUT_S} s if not answered</div>
       <div class="callmeta">${esc(call.routeNote)}</div>
       <button class="callendbtn" onclick="hangup()">✕ End</button>`);
   }
@@ -2154,7 +2238,7 @@ function callBanner() {
       <div class="callavatar pulse">📞</div>
       <div class="callname">Calling ${esc(call.remoteName)}</div>
       <div class="callmeta">ringing their phone</div>
-      <div class="calltimerline"><span class="muted pulse">◉ ${secs}s</span> · hangs up after ${RING_TIMEOUT_S} s if not answered</div>
+      <div class="calltimerline"><span class="muted pulse" data-timer="secs">${secs}s</span> · hangs up after ${RING_TIMEOUT_S} s if not answered</div>
       <div class="callmeta">${esc(call.routeNote)}</div>
       <button class="callendbtn" onclick="hangup()">✕ End</button>`);
   }
@@ -2163,7 +2247,7 @@ function callBanner() {
       <div class="callavatar pulse">📞</div>
       <div class="callname">Calling ${esc(call.remoteName)}</div>
       <div class="callmeta">ringing</div>
-      <div class="calltimerline"><span class="muted pulse">◉ ${secs}s</span> · hangs up honestly after ${RING_TIMEOUT_S} s if not answered</div>
+      <div class="calltimerline"><span class="muted pulse" data-timer="secs">${secs}s</span> · hangs up honestly after ${RING_TIMEOUT_S} s if not answered</div>
       <div class="callmeta">${esc(call.routeNote)}</div>
       <button class="callendbtn" onclick="hangup()">✕ End</button>`);
   }
@@ -2173,7 +2257,7 @@ function callBanner() {
       <div class="callavatar">📱</div>
       <div class="callname">On your phone: ${esc(call.remoteName)}</div>
       <div class="callmeta">talking on the handset · audio not in the browser</div>
-      <div class="calltimerline">${fmtDur(dur)}</div>
+      <div class="calltimerline" data-timer="dur">${fmtDur(dur)}</div>
       <div class="callmeta">${esc(call.routeNote)}</div>
       <div class="callbtnsrow">
         <button class="btn btn-primary" onclick="joinBridge()">Open audio bridge</button>
@@ -2213,8 +2297,31 @@ function honestError(err) {
   return m.length > 220 ? m.slice(0, 220) + '…' : m;
 }
 function fmtDur(s) { const m = Math.floor(s / 60), r = s % 60; return m ? `${m}m ${r}s` : `${r}s`; }
-function showToast(msg) { const t = document.createElement('div'); t.className = 'banner'; t.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:99'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 3500); }
-function showGuest(url) { document.getElementById('guest-out').innerHTML = `<div class="banner"><div class="tiny" style="margin-bottom:6px">Valid 60 minutes · free internet call to you</div><input class="input" value="${esc(url)}" readonly onclick="this.select()"><button class="btn btn-ghost" style="margin-top:8px;width:100%" onclick="copyText('${esc(url)}','Link copied')">Copy link</button></div>`; }
+function showToast(msg) {
+  // stack: each new toast sits BELOW the previous one in a flex column host — no overlap.
+  // The host is #toast-stack (rendered in the app shell); if it is missing (login/guest
+  // screens), one is created on the fly so toasts still work.
+  let stack = document.getElementById('toast-stack');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.id = 'toast-stack';
+    stack.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:200;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:14px';
+    document.body.appendChild(stack);
+  }
+  const t = document.createElement('div');
+  t.className = 'banner toast-in';
+  t.style.cssText = 'pointer-events:auto;box-shadow:0 12px 34px rgba(0,0,0,.5);margin-top:0';
+  if (stack.childElementCount === 0) t.style.marginTop = '14px';
+  t.textContent = msg;
+  stack.appendChild(t);
+  setTimeout(() => {
+    t.style.transition = 'opacity .3s,transform .3s';
+    t.style.opacity = '0';
+    t.style.transform = 'translateY(-10px)';
+    setTimeout(() => t.remove(), 320);
+  }, 3500);
+}
+function showGuest(url) { document.getElementById('guest-out').innerHTML = `<div class="banner"><div class="tiny" style="margin-bottom:6px">Valid 60 minutes · free internet call to you</div><input class="input" value="${esc(url)}" readonly onclick="this.select()"><button class="btn btn-ghost" style="margin-top:8px;width:100%" onclick="copyText('${jsArg(url)}','Link copied')">Copy link</button></div>`; }
 
 /* ---------------- guest join (no account needed) ---------------- */
 let guestCtx = null; // {token, host:{hostId,hostName,hostIdentity}}
@@ -2332,6 +2439,9 @@ async function guestMedia() {
     if (pc && ['failed','disconnected','closed'].includes(pc.connectionState) && call.phase === 'active') endCallLocal('connection lost');
   };
   pc.onicecandidate = (e) => { if (e.candidate) sendSignal('ice', e.candidate.toJSON()); };
+
+  // drain any offer/answer/ICE that arrived before this pc existed (guest path)
+  if (pendingSignals.length) { const q = pendingSignals; pendingSignals = []; q.forEach(handleSignal); }
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);

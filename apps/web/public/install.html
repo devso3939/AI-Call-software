@@ -83,7 +83,7 @@
     <h2>Install OpenCall on Android</h2>
     <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.8 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.9 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
       <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
@@ -114,21 +114,15 @@
   </div>
 
   <div class="sec">
-    <h3>🟡 What's new in v1.5.8</h3>
+    <h3>🟢 What's new in v1.5.9</h3>
     <div class="ok" style="margin-bottom:10px">
-      <p><strong>Voice now reaches your laptop:</strong> the gateway mic no longer runs echo cancellation (Android's AEC was erasing the far end from the mic input — the exact path the bridge needs), and the loudspeaker route is re-asserted the moment a call goes active. You hear the caller in the web app, and they hear you.</p>
+      <p><strong>Deep regression sweep — 10 bugs fixed:</strong> the in-call popup timer was frozen (it never counted up — now every timer ticks live); typing on the Devices tab no longer loses focus every second; a WebRTC signaling race that could leave gateway calls connected with <em>no audio</em> is fixed (early signals are queued instead of dropped); dial buttons ignore taps while you're already in a call; the first click of "Retry mic" now actually retries; toasts stack cleanly instead of overlapping; and names/numbers containing quotes or apostrophes no longer break call/message buttons.</p>
     </div>
     <div class="ok" style="margin-bottom:10px">
-      <p><strong>Real call popup:</strong> calls now open as a floating call card — avatar, big timer, quality indicator, mute/speaker/hold/DTMF controls and a full-width red End button — instead of the small strip at the bottom.</p>
+      <p><strong>Full UI/UX refresh:</strong> the whole workspace now uses the Inter typeface with softer cards, modern tables (rounded headers, hover rows, sticky column heads), a redesigned sidebar with gradient active markers, a premium call popup with breathing avatar ring and pill controls, and slide-in tab transitions. Every empty screen got a friendly icon + guidance instead of a bare grey line.</p>
     </div>
     <div class="ok" style="margin-bottom:10px">
-      <p><strong>SMS status fixed:</strong> messages that actually went out no longer stay "queued" in History — the radio-level sent confirmation is now recorded.</p>
-    </div>
-    <div class="ok" style="margin-bottom:10px">
-      <p><strong>Silent dialer strengthened:</strong> a new "Display over other apps" grant row in the app exempts it from Android's background-start ban, so the stock call screen can be dismissed while the gateway is backgrounded. Call recordings now capture both voices correctly.</p>
-    </div>
-    <div class="ok" style="margin-bottom:10px">
-      <p><strong>v1.5.7 recap:</strong> silent dialer, web audio + in-call controls, MP3 recordings, DTMF keypad, responsive polish.</p>
+      <p><strong>v1.5.8 recap:</strong> laptop audio fixed (AEC off for the acoustic bridge + speaker re-assert), real floating call popup, SMS status fixed, silent dialer strengthened, both-voice recordings.</p>
     </div>
     <div class="warn">
       <p><strong>SMS still blocked after granting?</strong> On One UI 6+ (Samsung) check <strong>Settings → Security and privacy → Auto Blocker</strong> — see the 🛡️ section below. On stock Android, <strong>Play Protect's financial-fraud warning</strong> is the usual culprit: <strong>More details → Install anyway</strong>, or register the app (section below) for a permanent fix.</p>
