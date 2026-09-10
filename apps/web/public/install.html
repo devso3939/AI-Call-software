@@ -83,7 +83,7 @@
     <h2>Install OpenCall on Android</h2>
     <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.6 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.7 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
       <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
@@ -114,15 +114,18 @@
   </div>
 
   <div class="sec">
-    <h3>🟡 What's new in v1.5.6</h3>
+    <h3>🟡 What's new in v1.5.7</h3>
     <div class="ok" style="margin-bottom:10px">
-      <p><strong>Calls now run 100% in the background:</strong> incoming cellular calls are reported from Android Telecom itself (exact number + state), and the new <strong>Agent mode</strong> toggle in the gateway app auto-answers every inbound call with the screen off — the web app becomes the only call interface. The stock dialer UI is dismissed on every state change; the phone never needs to be touched.</p>
+      <p><strong>Silent dialer:</strong> when the web app places a call through your phone, the stock dialer screen no longer pops up and stay — a persistent dismissal loop keeps the phone on your home screen while the call runs fully in the background.</p>
     </div>
     <div class="ok" style="margin-bottom:10px">
-      <p><strong>One-tap background setup:</strong> a new <strong>Background calls</strong> card in the app deep-links you to <em>Set as phone app</em> (default dialer role) and <em>Allow managing calls</em> — the two OS grants that give full mute/hold/answer control while the screen is off. Also: dial failures now surface instantly as <em>failed</em> in the web app instead of hanging on “dialing”.</p>
+      <p><strong>Web audio + controls fixed:</strong> speaker routing now goes through Android Telecom (and is re-asserted the moment a call goes active), so you actually hear the customer in the web app. The web call panel has full in-call controls: mute, hold, speaker, DTMF keypad, live timer.</p>
     </div>
     <div class="ok" style="margin-bottom:10px">
-      <p><strong>v1.5.5 recap:</strong> Telecom call control + web in-call bar, one-at-a-time permission center, and the Samsung Auto Blocker unblock guide below.</p>
+      <p><strong>MP3 call recordings:</strong> every web call is recorded (both voices), saved as an MP3 in your history — play it inline or download it. Plus: input fields no longer lose focus while typing, and the whole UI is sharper on phones.</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.6 recap:</strong> fully background calls, agent-mode auto-answer, Telecom-driven inbound reporting.</p>
     </div>
     <div class="warn">
       <p><strong>SMS still blocked after granting?</strong> On One UI 6+ (Samsung) check <strong>Settings → Security and privacy → Auto Blocker</strong> — see the 🛡️ section below. On stock Android, <strong>Play Protect's financial-fraud warning</strong> is the usual culprit: <strong>More details → Install anyway</strong>, or register the app (section below) for a permanent fix.</p>

@@ -87,6 +87,37 @@ class FullCallService : InCallService() {
             Call.STATE_DISCONNECTED, Call.STATE_DISCONNECTING -> "ended"
             else -> "other:" + c.state
         }
+
+        /**
+         * 1.5.7 — the supported speaker entry point. AudioManager flips lose
+         * to telephony on modern Android; routing through the InCallService
+         * (CallAudioState) is what actually sticks. Returns true when the
+         * route was applied through this service (i.e. the ICS is bound).
+         */
+        fun setSpeakerRoute(on: Boolean): Boolean = try {
+            val svc = instance ?: return false
+            svc.setAudioRoute(
+                if (on) CallAudioState.ROUTE_SPEAKER
+                else CallAudioState.ROUTE_EARPIECE)
+            true
+        } catch (_: Throwable) { false }
+
+        /**
+         * 1.5.7 — fire-and-forget "go home". Used by the ICS itself and by
+         * GatewayService as a best-effort fallback when the ICS is not
+         * bound (background activity launch may be blocked on Android 10+
+         * without a system binding — the attempt is harmless either way).
+         */
+        fun dismissInCallUi(ctx: Context) {
+            try {
+                ctx.startActivity(
+                    Intent(Intent.ACTION_MAIN)
+                        .addCategory(Intent.CATEGORY_HOME)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (e: Exception) {
+                Log.w(TAG, "home intent failed: ${e.message}")
+            }
+        }
     }
 
     // ─────────────────────── lifecycle ───────────────────────
@@ -171,7 +202,22 @@ class FullCallService : InCallService() {
         override fun onStateChanged(call: Call, state: Int) {
             Log.i(TAG, "state → ${stateLabel(call)}")
             pushState(call)
-            if (state == Call.STATE_ACTIVE) minimizeCallScreen()   // dialer re-shows itself
+            if (state == Call.STATE_ACTIVE) {
+                minimizeCallScreen()   // dialer re-shows itself
+                // 1.5.7 audio fix: telecom IGNORES route changes while the
+                // call is dialing/ringing — the AudioManager flip from
+                // WebRtcBridge.onOffer/onAnswer gets reverted. Re-assert the
+                // speaker through the supported InCallService path a moment
+                // after the call goes ACTIVE (and again after 1.5 s for slow
+                // OEM audio stacks), so the far end actually reaches the mic
+                // and the browser hears the customer.
+                if (CallControl.bridgeWantsSpeaker) {
+                    Thread {
+                        try { Thread.sleep(350); setAudioRoute(CallAudioState.ROUTE_SPEAKER) } catch (_: Exception) {}
+                        try { Thread.sleep(1150); setAudioRoute(CallAudioState.ROUTE_SPEAKER) } catch (_: Exception) {}
+                    }.start()
+                }
+            }
             if (state == Call.STATE_RINGING) minimizeCallScreen()
         }
 
@@ -264,10 +310,35 @@ class FullCallService : InCallService() {
      * every control lives in the web app.
      */
     private fun minimizeCallScreen() {
-        try {
-            val it = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(it)
-        } catch (e: Exception) { Log.w(TAG, "home intent failed: ${e.message}") }
+        dismissInCallUi(this)
+        suppressLoop()
+    }
+
+    /**
+     * 1.5.7 — silent dialer. The stock dialer re-shows itself right after we
+     * go home, and on many devices it launches AFTER onCallAdded fires, so a
+     * single dismissal always loses the race and the dialer stays on screen.
+     * Fix: keep dismissing — a 100 ms re-assert loop for ~12 s, restarted by
+     * every state change (dialing → ringing → active), so the whole
+     * call-setup window stays covered. Bounded so it can never spin forever.
+     */
+    @Volatile private var suppressGen: Int = 0
+
+    private fun suppressLoop() {
+        val gen = ++suppressGen
+        Thread {
+            var fired = 0
+            var alive = true
+            // 120 × 100 ms ≈ 12 s of coverage per state-change window —
+            // enough to cover dialing → ringing → answered on a normal
+            // network, and each state change restarts the clock anyway.
+            while (alive && gen == suppressGen && fired < 120 && calls.isNotEmpty()) {
+                try { Thread.sleep(100) } catch (_: InterruptedException) { alive = false }
+                if (alive) {
+                    dismissInCallUi(this)
+                    fired++
+                }
+            }
+        }.start()
     }
 }

@@ -70,6 +70,11 @@ object CallControl {
                 return false
             }
             FullCallService.pendingOutbound = true
+            // 1.5.7 silent dialer: get home in front BEFORE the dialer's
+            // InCallUI activity launches — shrinks the visible pop to a
+            // brief flash at worst, and FullCallService keeps dismissing
+            // from onCallAdded onward.
+            FullCallService.dismissInCallUi(ctx)
             tm.placeCall(uri, null)
             Log.i(TAG, "placeCall $e164")
             true
@@ -196,15 +201,10 @@ object CallControl {
     /** Force the active call onto the loudspeaker (acoustic bridge needs it). */
     fun speakerOn(ctx: Context) {
         bridgeWantsSpeaker = true
+        // 1.5.7: AudioRoute now prefers InCallService.setAudioRoute (the
+        // telecom-owned path that actually sticks) and only falls back to
+        // AudioManager when no ICS binding exists.
         AudioRoute.speakerOn(ctx)
-        try {
-            val svc = FullCallService.calls.toList()
-            if (svc.isNotEmpty()) {
-                // Through the InCallService audio API when available
-                // (FullCallService.setAudioRoute is instance-level; the AudioManager
-                // path below works everywhere, so this is belt & suspenders).
-            }
-        } catch (_: Exception) {}
     }
 
     fun speakerOff(ctx: Context) {

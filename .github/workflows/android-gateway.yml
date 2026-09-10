@@ -93,18 +93,19 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.6 · versionCode 12). Two APKs:
+            build (v1.5.7 · versionCode 13). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
-            | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+            | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
 
-            ### v1.5.6 highlights
-            - **Fully background calls** — inbound cellular calls are reported to the web app from the Telecom InCallService (no broadcast races), and **Agent mode** auto-answers every inbound call with the screen off. The stock dialer is minimized on every state change.
-            - **Default phone app setup card** — one tap to the role dialog; as the phone app the gateway gets exact answer/decline/mute/hold control with no dialer UI.
-            - **Honest dial failures** — if Telecom rejects a dial, the web call panel shows *failed* immediately instead of hanging on "dialing".
-            - Fixed a latent crash: a PHONE_STATE receiver was declared but its class never shipped.
+            ### v1.5.7 highlights
+            - **Silent dialer** — a persistent dismissal loop (plus a pre-dial dismissal and a service-side fallback) keeps the stock dialer off the screen while web-placed calls run fully in the background.
+            - **Web audio fixed** — speaker routing goes through Telecom (`InCallService.setAudioRoute`) and is re-asserted when the call goes ACTIVE, so the browser actually hears the far end.
+            - **MP3 call recordings** — both voices recorded, uploaded to storage, playable/downloadable in History.
+            - **In-call DTMF keypad** — new `dtmf_call` gateway command drives the Telecom keypad from the web panel.
+            - **Responsive UI polish** — mobile layout fixes, scrollable tables, no iOS input zoom, input focus no longer lost while typing.
 
             ### v1.5.5 highlights
             - **Stock dialer auto-minimized** — calls happen in the background on the phone; you see and control everything (state, mute, speaker, hold, end) in the web app.

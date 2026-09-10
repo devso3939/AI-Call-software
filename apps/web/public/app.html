@@ -6,6 +6,7 @@
 <title>OpenCall AI — Live Web App</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.18.4/dist/twilio.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
 <style>
   :root{
     --ink950:#070b14;--ink900:rgba(17,24,39,.72);--ink800:#141b29;--ink700:rgba(148,163,184,.14);--ink600:rgba(148,163,184,.22);
@@ -130,6 +131,11 @@
   .callbtn.end{background:#dc2626;color:#fff;box-shadow:0 8px 28px rgba(220,38,38,.40)}
   .keypadwrap{display:flex;flex-direction:column;align-items:center}
 
+  /* ================= in-call dialpad (web call controls) ================= */
+  .keypad.small{max-width:268px;margin-top:10px}
+  .keypad.small .key{aspect-ratio:auto;height:52px;font-size:1.25rem}
+  .banner-audio{width:100%;margin-top:10px;border-radius:10px;outline:none}
+
   /* ================= auth / guest pages ================= */
   .authwrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:22px;position:relative}
   .authcard{width:100%;max-width:400px;background:var(--ink900);border:1px solid var(--ink700);border-radius:20px;
@@ -196,6 +202,43 @@
   .charcount.over{color:#fca5a5}
   .keybox{border:1px solid var(--mint600);border-radius:12px;background:rgba(16,185,129,.08);padding:12px;margin-top:10px;box-shadow:0 0 24px rgba(16,185,129,.12) inset}
   @media (prefers-reduced-motion:no-preference){.btn{transition:background .15s,border-color .15s,transform .15s,box-shadow .15s}}
+
+  /* ================= 1.5.7 responsive / mobile polish ================= */
+  @media (max-width:640px){
+    body{font-size:.95rem}
+    .main{padding:14px 12px 118px}
+    .card{padding:16px 14px;border-radius:14px}
+    .pagetitle h2{font-size:1.12rem}
+    .grid2[style*="1fr 1.4fr"]{grid-template-columns:1fr !important}
+    .callstage h3{font-size:1.2rem}
+    .callstage .ring{width:76px;height:76px;font-size:1.8rem;margin-bottom:14px}
+    .callstage .cstate{margin-bottom:18px}
+    .callstage .route{position:static;text-align:center;margin-bottom:2px}
+    .callstage .quality{position:static;justify-content:center;margin:0 0 8px}
+    .callstage{justify-content:center;padding:14px}
+    .cbig{width:60px;height:60px;font-size:1.35rem}
+    .cbig.ctrl{width:52px;height:52px;font-size:1.1rem}
+    .cbig.end{width:64px;height:64px}
+    .callstage .cbtns{gap:12px;flex-wrap:wrap;justify-content:center}
+    .callstage .timers{margin:-8px 0 18px}
+    .bigcall{padding:12px}
+    th,td{padding:7px 5px}
+    .btn{padding:9px 14px;font-size:.86rem}
+    .input{font-size:16px}   /* stops iOS zoom-on-focus */
+  }
+  @media (max-width:400px){
+    .callstage .cbtns{gap:8px}
+    .cbig{width:54px;height:54px;font-size:1.25rem}
+    .cbig.ctrl{width:48px;height:48px}
+  }
+
+  /* ================= 1.5.7 table overflow handling ================= */
+  .tablewrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tablewrap table{min-width:640px}
+
+  /* iOS Safari: real viewport height (fixes keyboard jump) */
+  body{min-height:100dvh}
+  @supports not (height:100dvh){body{min-height:100vh}}
 </style>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
@@ -320,9 +363,171 @@ let realtimeReady = false;
 let muteState = false;
 let gatewayMute = false;         // web→phone mute (queue_gateway_command), distinct from browser mic
 let gatewaySpeaker = true;       // last known phone speaker state
-let gatewayFull = false;         // phone runs the full 1.5.5 gateway (not lite, not old build)
+let gatewayFull = false;         // phone runs the full 1.5.5+ gateway (in-call controls supported)
+let gatewayHeld = false;         // last known phone hold state
 let tab = 'dialer';
 let dial = '';
+
+/* call recording (browser-side, every call type) */
+let callRecorder = null;         // CallRecorder instance while a call is live
+
+/* ───────────────── call recorder (1.5.7) ─────────────────
+   Captures BOTH voices of the live call, encodes to MP3 in the browser
+   (lamejs, loaded from CDN) and uploads to the private `call-recordings`
+   Storage bucket as <call-id>/call.mp3, attached to the call row via
+   attach_call_recording. History plays it back with a signed URL.
+
+   GRAPH (singleton, created once per page — a MediaElementSource can be
+   attached to remoteAudio only ONCE and survives across calls):
+
+     remoteAudio ──► recTap (MediaElementSource, created once)
+                        ├─► recMix (the call bus you actually hear)
+                        │        ├─► speakers
+                        │        └─► recBus (silent monitor)
+                        └─► recBus (direct monitor)
+     mic ────────────────► recBus
+     recBus ──► ScriptProcessor tap ──► chunks ──► MP3
+
+   recBus is a GainNode with gain 0 wired to destination: a silent monitor
+   is REQUIRED for the ScriptProcessor to pump samples in Chrome. The tap
+   records the SUM of far end + mic; the speaker path stays gain 1 → the
+   user hears exactly what they always heard (no echo, no double audio). */
+const recGraph = {
+  ctx: null, tap: null, mix: null, bus: null, proc: null, chunks: [], sampleRate: 48000,
+};
+function recTapAudio() {
+  const g = recGraph;
+  if (g.ctx) return true;
+  try {
+    g.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    g.sampleRate = g.ctx.sampleRate;
+    g.tap = g.ctx.createMediaElementSource(remoteAudio);
+    g.mix = g.ctx.createGain(); g.mix.gain.value = 1.0;
+    g.tap.connect(g.mix);
+    g.mix.connect(g.ctx.destination);           // speakers (what the user hears)
+    g.bus = g.ctx.createGain(); g.bus.gain.value = 0;   // silent monitor keeps the tap pumping
+    g.tap.connect(g.bus);
+    g.mix.connect(g.bus);
+    g.proc = g.ctx.createScriptProcessor(4096, 1, 1);
+    g.proc.onaudioprocess = (e) => {
+      if (!callRecorder) return;                 // only capture while a recorder is live
+      g.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    };
+    g.bus.connect(g.proc);
+    g.proc.connect(g.ctx.destination);
+    return true;
+  } catch (e) {
+    console.warn('recording tap unavailable', e);
+    try { g.ctx && g.ctx.close(); } catch {}
+    g.ctx = null;
+    return false;
+  }
+}
+
+class CallRecorder {
+  constructor() {
+    this.recording = false;
+    this.failed = false;
+  }
+
+  async start(localStream) {
+    if (!remoteAudio.srcObject) return false;
+    if (!recTapAudio()) return false;
+    try { recGraph.ctx.resume(); } catch {}
+    // our own voice joins the mix (listen-only calls record the far end only)
+    this.localSrc = null;
+    try {
+      if (localStream && localStream.getAudioTracks().length) {
+        this.localSrc = recGraph.ctx.createMediaStreamSource(localStream);
+        this.localSrc.connect(recGraph.bus);
+      }
+    } catch (e) { console.warn('mic tap failed (recording far end only)', e); }
+    this.recording = true;
+    return true;
+  }
+
+  stop() {
+    this.recording = false;
+    try { this.localSrc && this.localSrc.disconnect(); } catch {}
+    this.localSrc = null;
+  }
+
+  /** Encode what we captured to MP3 and attach it to the call row. */
+  async finish(callId) {
+    this.stop();
+    const chunks = recGraph.chunks; recGraph.chunks = [];
+    if (!callId || !chunks.length) return false;
+    try {
+      showToast('Preparing call recording…');
+      const mp3 = await encodeMp3(chunks, recGraph.sampleRate);
+      if (!mp3 || !mp3.length) return false;
+      const path = `${callId}/call.mp3`;
+      const blob = new Blob([mp3], { type: 'audio/mpeg' });
+      const { error: upErr } = await sb.storage.from('call-recordings').upload(path, blob, {
+        contentType: 'audio/mpeg', upsert: true,
+      });
+      if (upErr) { console.warn('recording upload failed', upErr); showToast('Recording upload failed'); return false; }
+      const { error: dbErr } = await sb.rpc('attach_call_recording', { p_call_id: callId, p_path: path });
+      if (dbErr) { console.warn('attach recording failed', dbErr); return false; }
+      showToast('Call recording saved ✓ (see History)');
+      return true;
+    } catch (e) {
+      console.warn('recording finish failed', e);
+      return false;
+    }
+  }
+}
+
+/* mono Float32 chunks → MP3 ArrayBuffer via lamejs (loaded from CDN in head) */
+async function encodeMp3(chunks, sampleRate) {
+  if (typeof lamejs === 'undefined') { console.warn('lamejs not loaded'); return null; }
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const mono = new Float32Array(total);
+  let off = 0;
+  for (const c of chunks) { mono.set(c, off); off += c.length; }
+  // lamejs takes Int16
+  const pcm = new Int16Array(total);
+  for (let i = 0; i < total; i++) {
+    const s = Math.max(-1, Math.min(1, mono[i]));
+    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  const enc = new lamejs.Mp3Encoder(1, sampleRate, 64);   // mono · 64 kbps speech
+  const BLOCK = 1152 * 20;
+  const out = [];
+  for (let i = 0; i < pcm.length; i += BLOCK) {
+    const buf = enc.encodeBuffer(pcm.subarray(i, Math.min(i + BLOCK, pcm.length)));
+    if (buf.length) out.push(new Uint8Array(buf));
+    // yield so the tab stays responsive on long calls
+    if ((i / BLOCK) % 50 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+  const end = enc.flush();
+  if (end.length) out.push(new Uint8Array(end));
+  const size = out.reduce((n, u) => n + u.length, 0);
+  const ret = new Uint8Array(size);
+  off = 0;
+  for (const u of out) { ret.set(u, off); off += u.length; }
+  return ret;
+}
+
+/* start recording once remote audio exists (called on call → active) */
+async function startRecordingIfPossible(localStream) {
+  if (!call.callId || callRecorder) return;
+  // tiny retry: remoteAudio.srcObject lands with ontrack, sometimes a beat later
+  for (let i = 0; i < 10 && !(remoteAudio.srcObject); i++) await new Promise(r => setTimeout(r, 300));
+  if (!remoteAudio.srcObject) return;
+  const rec = new CallRecorder();
+  const ok = await rec.start(localStream || null);
+  if (ok) { callRecorder = rec; renderApp(); }
+}
+
+/* stop + persist (called from every end path) */
+async function stopRecordingAndSave() {
+  const rec = callRecorder; callRecorder = null;
+  if (!rec) return;
+  const callId = call.callId;
+  await rec.finish(callId);
+  if (me && callId) refreshHistory();
+}
 
 /* PSTN (Twilio Voice SDK) */
 let twilioDevice = null;         // Twilio.Device instance, registered once per session
@@ -404,13 +609,33 @@ async function enterApp(p) {
   wireRealtime();
   sweep();
   setInterval(sweep, 30000);
-  // live seconds display while a call banner is on screen (cheap: only when ringing/active)
-  setInterval(() => { if (['ringing','active','dialing'].includes(call.phase) || (tab === 'devices' && pairingCode)) renderApp(); }, 1000);
+  // per-second UI tick — updates ONLY the seconds/elapsed text nodes and the
+  // pairing-code countdown. It must NEVER re-render the whole app: a full
+  // renderApp() here used to destroy the DOM (and with it your focus and
+  // everything you had typed) once a second while a call was live.
+  setInterval(uiTick, 1000);
   startBootPoll();
-  document.addEventListener('click', () => { remoteAudio.play().then(() => {}, () => {}); }, { once: true });
+  document.addEventListener('click', () => {
+    remoteAudio.play().then(() => {}, () => {});
+    // the recording graph rides the same user gesture: a SUSPENDED
+    // AudioContext would silence every future call once the tap exists
+    if (recGraph.ctx && recGraph.ctx.state === 'suspended') { try { recGraph.ctx.resume(); } catch {} }
+  }, { once: true });
   setupPstn();          // check config + register the Twilio device (no-op when PSTN is not configured)
   refreshDevices();     // SIM gateway device list + online status
   refreshSms();         // recent SMS threads
+}
+
+/* granular per-second UI update: touches text nodes only, never inputs */
+function uiTick() {
+  // pairing-code countdown (Devices tab)
+  if (tab === 'devices' && pairingCode) renderApp();
+  // elapsed call time in the call banner / dialing banners
+  const st = document.querySelector('.callsecs');
+  if (st && call.startedAt) st.textContent = Math.floor((Date.now() - call.startedAt) / 1000) + 's';
+  // on-phone banner: also show duration next to "talking on the handset"
+  const op = document.querySelector('.onphone-secs');
+  if (op && call.startedAt) op.textContent = fmtDur(Math.floor((Date.now() - call.startedAt) / 1000));
 }
 
 /* ---------------- PSTN: real phone calls (Twilio Voice) ----------------
@@ -469,6 +694,7 @@ function wireTwilioCall(c) {
       call.phase = 'active'; call.startedAt = Date.now();
       call.remoteStream = c.getRemoteStream ? c.getRemoteStream() : null;
       if (call.remoteStream) { remoteAudio.srcObject = call.remoteStream; remoteAudio.play().catch(() => {}); }
+      startRecordingIfPossible(localStream);   // 1.5.7: record both voices
       renderApp();
       sb.rpc('update_pstn_call', { p_call_id: call.callId, p_event: 'answered', p_call_sid: c.parameters && c.parameters.CallSid }).then(() => {}, () => {});
     }
@@ -507,6 +733,7 @@ async function endPstnCall(reason) {
   const dur = call.startedAt ? Math.round((Date.now() - call.startedAt) / 1000) : 0;
   const id = call.callId;
   const wasActive = call.phase === 'active';
+  stopRecordingAndSave();   // 1.5.7: encode + upload what we captured
   if (activeTwilioCall) { try { activeTwilioCall.disconnect(); } catch {} activeTwilioCall = null; }
   call = { callId:null, phase:'idle', remoteName:'', peerId:null, isGuest:false, isPstn:false,
            quality:'unknown', rttMs:null, startedAt:null, routeNote:'', role:null };
@@ -539,10 +766,11 @@ async function refreshDevices() {
     // full (app.opencall.gateway2) = automatic dialing + SMS relay
     const v = (gatewayOnline && gatewayOnline.app_version) || '';
     gatewayFlavor = v.includes('-lite') ? 'bridge' : v.includes('-full') ? 'gateway' : gatewayFlavor;
-    // 1.5.5 full build reports e.g. "1.5.5-full": only that build can
-    // execute the new in-call control commands (queue_gateway_command
-    // rejects unsupported kinds anyway — this just keeps the UI honest)
-    gatewayFull = !v.includes('-lite') && v.startsWith('1.5.5');
+    // 1.5.5+ full build reports e.g. "1.5.5-full": any non-lite full build
+    // speaks the in-call command protocol (mute/speaker/hold/dtmf). The DB
+    // queue_gateway_command allowlist is the real gate — this just keeps
+    // the UI honest for genuinely too-old phones.
+    gatewayFull = !v.includes('-lite') && !v.startsWith('1.5.4') && !v.startsWith('1.5.3') && v !== '';
     if (gatewayOnline && pairingCode) { pairingCode = null; showToast('Android device paired ✓'); }
   }
   if (me) renderApp();
@@ -719,7 +947,7 @@ async function gwCmd(kind, payload) {
 }
 
 async function gwToggleMute(btn) {
-  if (!gatewayFull) { showToast('Update the phone app to 1.5.5 for this'); return; }
+  if (!gatewayFull) { showToast('Update the phone app to the latest version for this'); return; }
   const want = !gatewayMute;
   const id = await gwCmd(want ? 'mute_call' : 'unmute_call');
   if (!id) return;
@@ -729,13 +957,23 @@ async function gwToggleMute(btn) {
 }
 
 async function gwToggleSpeaker(btn) {
-  if (!gatewayFull) { showToast('Update the phone app to 1.5.5 for this'); return; }
+  if (!gatewayFull) { showToast('Update the phone app to the latest version for this'); return; }
   const want = !gatewaySpeaker;
   const id = await gwCmd(want ? 'speaker_on' : 'speaker_off');
   if (!id) return;
   gatewaySpeaker = want;
   if (btn) btn.textContent = want ? 'Speaker off' : 'Speaker on';
   showToast(want ? 'Phone speaker ON (audio flows to browser)' : 'Phone speaker OFF (call is on the earpiece)');
+}
+
+async function gwToggleHold(btn) {
+  if (!gatewayFull) { showToast('Update the phone app to the latest version for this'); return; }
+  const want = !gatewayHeld;
+  const id = await gwCmd(want ? 'hold_call' : 'resume_call');
+  if (!id) return;
+  gatewayHeld = want;
+  renderApp();
+  showToast(want ? 'Call on hold' : 'Call resumed');
 }
 
 /* gatewayOnStatus — exact call state pushed by the phone's InCallService */
@@ -1048,12 +1286,14 @@ function endCallLocal(reason) {
   clearInterval(statsTimer); statsTimer = null;
   stopEventPoll();
   stopRing();
+  stopRecordingAndSave();   // 1.5.7: encode + upload what we captured (async, non-blocking)
   leaveRoom();
   if (pc) { try { pc.close(); } catch {} pc = null; }
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   remoteAudio.srcObject = null;
   muteState = false;
-  gatewayMute = false; gatewaySpeaker = true;
+  gatewayMute = false; gatewaySpeaker = true; gatewayHeld = false;
+  dtmfOpen = false;
   const dur = call.startedAt ? Math.round((Date.now() - call.startedAt) / 1000) : 0;
   call = { callId:null, phase:'idle', remoteName:'', peerId:null, isGuest:false,
            quality:'unknown', rttMs:null, startedAt:null, routeNote:'', role:null };
@@ -1114,7 +1354,11 @@ async function startMedia(role) {
   pc = new RTCPeerConnection(RTC_CONFIG);
   if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
   else pc.addTransceiver('audio', { direction: 'recvonly' });   // valid SDP so listen-only still connects
-  pc.ontrack = (e) => { remoteAudio.srcObject = e.streams[0]; remoteAudio.play().catch(() => {}); };
+  pc.ontrack = (e) => {
+    remoteAudio.srcObject = e.streams[0]; remoteAudio.play().catch(() => {});
+    // 1.5.7: capture both voices once the far end starts flowing
+    startRecordingIfPossible(localStream);
+  };
   pc.onconnectionstatechange = () => {
     if (pc && ['failed','disconnected','closed'].includes(pc.connectionState) && call.phase === 'active') {
       endCallLocal('connection lost');
@@ -1171,12 +1415,45 @@ function toggleMute(btn) {
 async function refreshHistory() {
   if (!me) return;
   const { data } = await sb.from('calls')
-    .select('id, requested_destination, normalized_destination, status, duration_seconds, created_at, caller_kind, guest_name, created_by, callee_id, route_type')
+    .select('id, requested_destination, normalized_destination, status, duration_seconds, created_at, caller_kind, guest_name, created_by, callee_id, route_type, recording_url')
     .or(`created_by.eq.${me.id},callee_id.eq.${me.id}`)
     .order('created_at', { ascending: false })
     .limit(30);
   history = data || [];
   renderApp();
+}
+
+/* 1.5.7: signed-URL playback for a call recording (bucket is private) */
+const recUrlCache = new Map();   // callId → { url, at }
+async function recordingUrl(callId, path) {
+  const hit = recUrlCache.get(callId);
+  if (hit && Date.now() - hit.at < 50 * 60 * 1000) return hit.url;   // signed for 60 min
+  const { data, error } = await sb.storage.from('call-recordings').createSignedUrl(path, 3600);
+  if (error || !data?.signedUrl) { showToast('Recording unavailable: ' + honestError(error || { message: 'not found' })); return null; }
+  recUrlCache.set(callId, { url: data.signedUrl, at: Date.now() });
+  return data.signedUrl;
+}
+async function playRecording(callId, path, btn) {
+  const url = await recordingUrl(callId, path);
+  if (!url) return;
+  const holder = document.getElementById('rec-play');
+  if (!holder) return;
+  holder.innerHTML = `<audio controls autoplay src="${url}" style="width:100%;margin-top:8px"></audio>`;
+  btn && (btn.textContent = '▮▮ Close player');
+  btn && (btn.onclick = () => { holder.innerHTML = ''; btn.textContent = '▶ Play recording'; btn.onclick = () => playRecording(callId, path, btn); });
+}
+async function downloadRecording(callId, path) {
+  const url = await recordingUrl(callId, path);
+  if (!url) return;
+  try {
+    const r = await fetch(url);
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `opencall-${callId.slice(0, 8)}.mp3`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch { window.open(url, '_blank'); }
 }
 
 async function refreshContacts() {
@@ -1254,6 +1531,15 @@ function toggleSide() {
 function renderApp() {
   document.title = 'OpenCall AI';
   if (!me) return;
+  // FOCUS GUARD — a re-render must never yank the pointer out of a field the
+  // user is typing in. Remember the active element (+ cursor position), and
+  // restore both right after the innerHTML swap. If an element with the same
+  // id exists in the new DOM we restore into it; same-tag fallback otherwise.
+  const ae = document.activeElement;
+  const focusId = ae && ae.id ? ae.id : null;
+  const focusTag = ae && ae.tagName ? ae.tagName : null;
+  const focusSel = ae && typeof ae.selectionStart === 'number' ? { start: ae.selectionStart, end: ae.selectionEnd } : null;
+  const sideOpen = document.getElementById('sidebar')?.classList.contains('open') ? ' show' : '';
   const body = tab === 'dialer' ? tabDialer() : tab === 'sms' ? tabSms() : tab === 'devices' ? tabDevices()
              : tab === 'connect' ? tabConnect() : tab === 'contacts' ? tabContacts()
              : tab === 'history' ? tabHistory() : tabLinks();
@@ -1268,7 +1554,6 @@ function renderApp() {
     links:    ['Guest links', 'Let anyone call you from a browser — no account needed.'],
   };
   const t = titles[tab] || ['OpenCall', ''];
-  const sideOpen = document.getElementById('sidebar')?.classList.contains('open') ? ' show' : '';
   root.innerHTML = `
     <div class="shell">
       ${tab === 'dialer' ? '' : `<div class="sideback${sideOpen}" onclick="toggleSide()"></div>`}
@@ -1329,6 +1614,16 @@ function renderApp() {
     ${callBanner()}
   `;
   wireDialKeys();
+  // FOCUS RESTORE — put the pointer back exactly where it was
+  if (focusId) {
+    const again = document.getElementById(focusId);
+    if (again && (again.tagName === 'INPUT' || again.tagName === 'TEXTAREA' || again.tagName === 'SELECT')) {
+      try { again.focus(); if (focusSel && typeof again.setSelectionRange === 'function') again.setSelectionRange(focusSel.start, focusSel.end); } catch {}
+    }
+  } else if (focusTag && (focusTag === 'INPUT' || focusTag === 'TEXTAREA')) {
+    const same = Array.from(root.querySelectorAll(focusTag)).find(el => el === document.activeElement === false && !el.disabled && !el.readOnly);
+    if (same && document.activeElement === document.body) { try { same.focus(); } catch {} }
+  }
 }
 
 function tabDialer() {
@@ -1609,7 +1904,7 @@ function tabConnect() {
       <div class="row between"><h2>Your keys</h2><button class="btn btn-ghost" onclick="refreshApiKeys()">↻</button></div>
       ${!apiKeysLoaded ? '<p class="muted">Loading…</p>' :
         apiKeys.length === 0 ? '<p class="muted">No keys yet — create one above to connect your first app.</p>' : `
-        <table><thead><tr><th>Name</th><th>Key</th><th>Used</th><th>Requests</th><th></th></tr></thead><tbody>
+        <div class="tablewrap"><table><thead><tr><th>Name</th><th>Key</th><th>Used</th><th>Requests</th><th></th></tr></thead><tbody>
         ${apiKeys.map(k => `
           <tr>
             <td>${esc(k.name)}</td>
@@ -1618,7 +1913,7 @@ function tabConnect() {
             <td class="tiny">${k.request_count}</td>
             <td>${k.revoked ? '<span class="pill failed">revoked</span>' : `<button class="btn btn-ghost" onclick="revokeApiKey('${k.id}')">Revoke</button>`}</td>
           </tr>`).join('')}
-        </tbody></table>`}
+        </tbody></table></div>`}
       ${active.length >= 10 ? '<p class="tiny" style="color:#fca5a5;margin-top:6px">Key limit reached (10 active) — revoke one to create another.</p>' : ''}
     </div>
   </div>
@@ -1657,8 +1952,9 @@ function tabHistory() {
   return `
   <div class="card">
     <div class="row between"><h2>History</h2><button class="btn btn-ghost tiny" onclick="refreshHistory()">↻ Refresh</button></div>
+    <p class="tiny" style="margin:0 0 10px">Calls you make from the web app are recorded (both voices) and appear here as playable MP3s.</p>
     ${history.length === 0 ? '<p class="muted">No calls yet.</p>' : `
-    <table><thead><tr><th>With</th><th>Route</th><th>Status</th><th>Duration</th></tr></thead><tbody>
+    <div class="tablewrap"><table><thead><tr><th>With</th><th>Route</th><th>Status</th><th>Duration</th><th>Recording</th></tr></thead><tbody>
     ${history.map(h => {
       const other = h.caller_kind === 'pstn'
         ? '📱 ' + (h.normalized_destination || h.requested_destination || 'phone number')
@@ -1670,8 +1966,13 @@ function tabHistory() {
         <td class="tiny">${esc(h.route_type || 'ON_NET')}</td>
         <td><span class="pill ${esc(h.status)}">${esc(h.status)}</span></td>
         <td>${h.duration_seconds ? fmtDur(h.duration_seconds) : '—'}</td>
+        <td>${h.recording_url ? `
+          <button class="btn btn-ghost tiny" onclick="playRecording('${h.id}','${esc(h.recording_url)}',this)">▶ Play</button>
+          <button class="btn btn-ghost tiny" onclick="downloadRecording('${h.id}','${esc(h.recording_url)}')">⬇ mp3</button>`
+          : '<span class="muted tiny">—</span>'}</td>
       </tr>`; }).join('')}
-    </tbody></table>`}
+    </tbody></table></div>
+    <div id="rec-play"></div>`}
   </div>`;
 }
 
@@ -1706,72 +2007,123 @@ function estimateFor(v) {
 }
 function canCall(v) { return v && v.trim().length >= 3; }
 
+/* ───────────────────── in-call panel (phone-style controls) ─────────────────────
+   A real dialer UI inside the banner: live timer, mute (browser mic for
+   internet/PSTN calls, phone mic for gateway calls), speaker, hold, a DTMF
+   keypad, the recording indicator and End — everything a normal phone app
+   shows during a call. */
+function callPanel() {
+  const elapsed = call.startedAt ? Math.floor((Date.now() - call.startedAt) / 1000) : 0;
+  const listenOnly = !!call.stateNote && call.stateNote.includes('listen-only');
+  const gwBridge = call.isGateway && gatewayFlavor === 'bridge';
+  const gwFull = call.isGateway && gatewayFlavor !== 'bridge';
+  const showPad = dtmfOpen && (call.isPstn || call.isGateway ? gatewayFlavor !== 'bridge' : true);
+  // gateway: our commands drive the PHONE; internet/PSTN: they drive the browser mic
+  const canMute = call.isGateway ? (gwFull || !!localStream) : !listenOnly;
+  const recording = !!(callRecorder && callRecorder.recording);
+  return `
+  <div class="bigcall">
+    <div class="row between" style="flex-wrap:wrap;gap:10px">
+      <div style="min-width:0">
+        <div class="row" style="gap:8px">
+          <strong>🔴 ${esc(call.remoteName)}</strong>
+          ${recording ? '<span class="pill failed" title="This call is being recorded">● REC</span>' : ''}
+          ${gatewayHeld ? '<span class="pill queued">⏸ on hold</span>' : ''}
+        </div>
+        <div class="tiny" style="margin-top:3px">
+          <span class="calltimer" style="font-size:.95rem;font-weight:700;color:#e5eaf3">${fmtDur(elapsed)}</span>
+          ${call.isPstn ? ' · ' + esc(call.routeNote) : ''}
+          ${!call.isPstn && !call.isGateway ? ' · FREE ON-NET' : ''}
+        </div>
+        <div class="tiny" style="margin-top:3px">
+          quality: <span class="qdot ${call.quality}"></span> <span class="qlabel">${call.quality}</span>${call.isPstn ? '' : ' · rtt <span class="rtt">' + (call.rttMs ?? '…') + '</span> ms'}
+          <span class="recordnote">${recording ? ' · recording (both voices) · mp3 in history when it ends' : ''}</span>
+        </div>
+        ${gwBridge ? `<div class="tiny mint">🔊 audio passes through your phone's speaker + mic (acoustic bridge) · keep the phone close, other sounds off</div>` : ''}
+        ${call.stateNote ? `<div class="tiny micnote" style="color:#b45309">${esc(call.stateNote)}</div>` : ''}
+      </div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        ${listenOnly && !call.isGateway ? '<button class="btn btn-ghost" onclick="retryMic(this)">Retry mic</button>' : ''}
+        ${canMute ? `<button id="cp-mute" class="btn ${muteState || gatewayMute ? 'btn-danger' : 'btn-ghost'}" onclick="cpMute(this)" title="Mute your microphone">🎤 ${muteState || gatewayMute ? 'Unmute' : 'Mute'}</button>` : ''}
+        ${call.isGateway && gatewayFlavor !== 'bridge' ? `<button id="cp-spk" class="btn ${gatewaySpeaker ? 'btn-ghost' : 'btn-danger'}" onclick="cpSpeaker(this)" title="Phone loudspeaker">🔊 ${gatewaySpeaker ? 'Speaker off' : 'Speaker on'}</button>` : ''}
+        ${gwFull ? `<button id="cp-hold" class="btn ${gatewayHeld ? 'btn-danger' : 'btn-ghost'}" onclick="cpHold(this)" title="Put the call on hold">⏸ ${gatewayHeld ? 'Resume' : 'Hold'}</button>` : ''}
+        ${call.isPstn || (call.isGateway && gatewayFlavor !== 'bridge') ? `<button id="cp-pad" class="btn ${dtmfOpen ? 'btn-primary' : 'btn-ghost'}" onclick="toggleDtmf()" title="Dialpad (DTMF)">⌨ Keypad</button>` : ''}
+        <button class="btn btn-danger" onclick="hangup()" style="min-width:92px">✕ End</button>
+      </div>
+    </div>
+    ${showPad ? `
+    <div class="keypad small" id="dtmf-pad" style="margin-left:auto;margin-right:auto">
+      ${[['1',''],['2','ABC'],['3','DEF'],['4','GHI'],['5','JKL'],['6','MNO'],['7','PQRS'],['8','TUV'],['9','WXYZ'],['*',''],['0','+'],['#','']]
+        .map(([d, sub]) => `<button class="key" onclick="dtmfPress('${d === "'" ? "\\'" : d}')" type="button"><span>${d}</span>${sub ? `<small>${sub}</small>` : '<small>&nbsp;</small>'}</button>`).join('')}
+    </div>` : ''}
+  </div>`;
+}
+
+/* in-call panel actions */
+function cpMute(btn) {
+  if (call.isGateway) return gwToggleMute(btn);
+  muteState = !muteState;
+  if (call.isPstn) {
+    try { if (activeTwilioCall) activeTwilioCall.mute(muteState); } catch {}
+  } else if (localStream) {
+    localStream.getAudioTracks().forEach(t => t.enabled = !muteState);
+  }
+  renderApp();
+}
+function cpSpeaker(btn) { return gwToggleSpeaker(btn); }
+function cpHold(btn) { return gwToggleHold(btn); }
+let dtmfOpen = false;
+function toggleDtmf() { dtmfOpen = !dtmfOpen; renderApp(); }
+async function dtmfPress(d) {
+  try { await gwCmd('dtmf_call', { digit: String(d) }); } catch {}
+  if (call.isPstn) { try { activeTwilioCall && activeTwilioCall.sendDigits(String(d)); } catch {} }
+}
 function callBanner() {
+  // ── full phone-style call panel (active call, all route types) ──
+  if (call.phase === 'active') return callPanel();
   if (call.phase === 'dialing' && call.isGateway) {
     const secs = Math.floor((Date.now() - call.startedAt) / 1000);
     const bridge = gatewayFlavor === 'bridge';
     return `<div class="bigcall"><div class="row between">
       <div><strong>🤖 ${bridge ? 'Waiting for you to dial ' : 'Dialing '}${esc(call.remoteName)} via your Android…</strong> <span class="muted pulse">◉ ${bridge ? 'tap the OpenCall notification on your phone' : 'phone is dialing'}</span>
-      <div class="tiny">${esc(call.routeNote)} · ${secs}s${bridge ? ' · expires after 90 s if not tapped' : ''}</div></div>
+      <div class="tiny">${esc(call.routeNote)} · <span class="callsecs">${secs}</span>${bridge ? ' · expires after 90 s if not tapped' : ''}</div></div>
       <button class="btn btn-danger" onclick="hangup()">End</button></div></div>`;
   }
   if (call.phase === 'dialing') {
     const secs = Math.floor((Date.now() - call.startedAt) / 1000);
     return `<div class="bigcall"><div class="row between">
       <div><strong>📱 Dialing ${esc(call.remoteName)}…</strong> <span class="muted pulse">◉ connecting to phone network</span>
-      <div class="tiny">${esc(call.routeNote)} · ${secs}s</div></div>
+      <div class="tiny">${esc(call.routeNote)} · <span class="callsecs">${secs}</span></div></div>
       <button class="btn btn-danger" onclick="hangup()">End</button></div></div>`;
   }
   if (call.phase === 'ringing' && call.isGateway) {
     const secs = Math.floor((Date.now() - call.startedAt) / 1000);
     return `<div class="bigcall"><div class="row between">
       <div><strong>📞 Calling ${esc(call.remoteName)}…</strong> <span class="muted pulse">◉ their phone is ringing</span>
-      <div class="tiny">${esc(call.routeNote)} · ${secs}s · hangs up after ${RING_TIMEOUT_S} s if not answered</div></div>
+      <div class="tiny">${esc(call.routeNote)} · <span class="callsecs">${secs}</span> · hangs up after ${RING_TIMEOUT_S} s if not answered</div></div>
       <button class="btn btn-danger" onclick="hangup()">End</button></div></div>`;
   }
   if (call.phase === 'ringing' && call.isPstn) {
     const secs = Math.floor((Date.now() - call.startedAt) / 1000);
     return `<div class="bigcall"><div class="row between">
       <div><strong>📞 Calling ${esc(call.remoteName)}…</strong> <span class="muted pulse">◉ ringing their phone</span>
-      <div class="tiny">${esc(call.routeNote)} · ${secs}s · hangs up after ${RING_TIMEOUT_S} s if not answered</div></div>
+      <div class="tiny">${esc(call.routeNote)} · <span class="callsecs">${secs}</span> · hangs up after ${RING_TIMEOUT_S} s if not answered</div></div>
       <button class="btn btn-danger" onclick="hangup()">End</button></div></div>`;
   }
   if (call.phase === 'ringing') {
     const secs = Math.floor((Date.now() - call.startedAt) / 1000);
     return `<div class="bigcall"><div class="row between">
       <div><strong>Calling ${esc(call.remoteName)}…</strong> <span class="muted pulse">◉ ringing</span>
-      <div class="tiny">${esc(call.routeNote)} · ${secs}s · hangs up honestly after ${RING_TIMEOUT_S} s if not answered</div></div>
+      <div class="tiny">${esc(call.routeNote)} · <span class="callsecs">${secs}</span> · hangs up honestly after ${RING_TIMEOUT_S} s if not answered</div></div>
       <button class="btn btn-danger" onclick="hangup()">End</button></div></div>`;
   }
   if (call.phase === 'onphone') {
+    const secs = call.startedAt ? Math.floor((Date.now() - call.startedAt) / 1000) : 0;
     return `<div class="bigcall"><div class="row between">
       <div><strong>📱 On your phone: ${esc(call.remoteName)}</strong>
-      <div class="tiny">${esc(call.routeNote)} · talking on the handset · audio not in the browser</div></div>
+      <div class="tiny">${esc(call.routeNote)} · talking on the handset · audio not in the browser · <span class="onphone-secs">${fmtDur(secs)}</span></div></div>
       <div class="row">
         <button class="btn btn-ghost" onclick="joinBridge()">Open audio bridge</button>
-        <button class="btn btn-danger" onclick="hangup()">End</button>
-      </div></div></div>`;
-  }
-  if (call.phase === 'active') {
-    const listenOnly = !!call.stateNote && call.stateNote.includes('listen-only');
-    const bridgeNote = (call.isGateway && gatewayFlavor === 'bridge')
-      ? `<div class="tiny mint">🔊 audio passes through your phone's speaker + mic (acoustic bridge) · keep the phone close, other sounds off</div>`
-      : '';
-    // 1.5.5 gateway call: the phone's mic is the far end of the bridge —
-    // mute/speaker buttons drive IT, not the browser mic
-    const gwControls = (call.isGateway && gatewayFlavor !== 'bridge')
-      ? `<button class="btn btn-ghost" onclick="gwToggleMute(this)">${gatewayMute ? 'Unmute phone' : 'Mute phone'}</button>
-         <button class="btn btn-ghost" onclick="gwToggleSpeaker(this)">${gatewaySpeaker ? 'Speaker off' : 'Speaker on'}</button>`
-      : '';
-    return `<div class="bigcall"><div class="row between">
-      <div><strong>🔴 On call with ${esc(call.remoteName)}</strong>
-      <div class="tiny">${call.isPstn ? esc(call.routeNote) + ' · ' : ''}quality: <span class="qdot ${call.quality}"></span> <span class="qlabel">${call.quality}</span>${call.isPstn ? '' : ' · rtt <span class="rtt">' + (call.rttMs ?? '…') + '</span> ms'}</div>
-      ${bridgeNote}
-      ${call.stateNote ? `<div class="tiny micnote" style="color:#b45309">${esc(call.stateNote)}</div>` : ''}</div>
-      <div class="row">
-        ${listenOnly ? '<button class="btn btn-ghost" onclick="retryMic(this)">Retry mic</button>' : ''}
-        ${listenOnly || call.isGateway ? '' : `<button class="btn btn-ghost" onclick="toggleMute(this)">${muteState ? 'Unmute' : 'Mute'}</button>`}
-        ${gwControls}
         <button class="btn btn-danger" onclick="hangup()">End</button>
       </div></div></div>`;
   }
@@ -1913,7 +2265,10 @@ async function guestMedia() {
   pc = new RTCPeerConnection(RTC_CONFIG);
   if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
   else pc.addTransceiver('audio', { direction: 'recvonly' });   // valid SDP so listen-only still connects
-  pc.ontrack = (e) => { remoteAudio.srcObject = e.streams[0]; remoteAudio.play().catch(() => {}); };
+  pc.ontrack = (e) => {
+    remoteAudio.srcObject = e.streams[0]; remoteAudio.play().catch(() => {});
+    startRecordingIfPossible(localStream);   // 1.5.7: record both voices
+  };
   pc.onconnectionstatechange = () => {
     if (pc && ['failed','disconnected','closed'].includes(pc.connectionState) && call.phase === 'active') endCallLocal('connection lost');
   };

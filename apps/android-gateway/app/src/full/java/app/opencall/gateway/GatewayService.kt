@@ -201,6 +201,24 @@ class GatewayService : Service() {
                                 .put("p_device_id", devId).put("p_secret", secret)
                                 .put("p_call_id", callId).put("p_state", "dialing"))
                             prefs.edit().putString("bridgeRoom", room).putString("bridgeCallId", callId).apply()
+                            // 1.5.7 silent-dialer fallback: when the
+                            // InCallService is NOT bound (no default-dialer /
+                            // manage-calls grant) nothing else dismisses the
+                            // stock dialer, so a background best-effort loop
+                            // keeps pressing home during call setup. Harmless
+                            // no-op when background activity starts are
+                            // blocked; the ICS path handles the rest.
+                            Thread {
+                                var n = 0
+                                // stops early once the ICS takes over (its
+                                // calls set becomes non-empty); otherwise
+                                // covers ~10 s of call setup.
+                                while (n < 40 && FullCallService.calls.isEmpty()) {
+                                    FullCallService.dismissInCallUi(this@GatewayService)
+                                    try { Thread.sleep(250) } catch (_: InterruptedException) { break }
+                                    n++
+                                }
+                            }.start()
                             // open the audio bridge NOW so the browser's offer is
                             // answered the moment it lands
                             ensureBridge().joinAndAnswer(room, callId)
@@ -295,6 +313,14 @@ class GatewayService : Service() {
                     ok = st != null
                     result = if (st == null) JSONObject().put("error", "no active call")
                              else JSONObject().put("held", false)
+                }
+
+                // 1.5.7: DTMF keypad from the web call panel
+                "dtmf_call" -> {
+                    val digit = cmd.payload.optString("digit").firstOrNull()
+                    ok = digit != null && CallControl.sendDtmf(digit)
+                    result = if (digit == null) JSONObject().put("error", "missing digit")
+                             else JSONObject().put("sent", ok)
                 }
 
                 // 1.5.5: exact call-state probe — lets the web app verify the
