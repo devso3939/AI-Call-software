@@ -93,7 +93,7 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.0 · versionCode 6). Two APKs:
+            build (v1.5.4 · versionCode 10). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|

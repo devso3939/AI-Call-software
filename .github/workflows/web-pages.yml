@@ -1,0 +1,33 @@
+name: web-pages-deploy
+
+# Deploy the static web app (apps/web/public) to gh-pages on EVERY push to
+# master — so install.html, app.html and the QR assets are always the newest
+# build. This is the "always update the web app" guarantee.
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage web content
+        run: |
+          mkdir -p staging
+          cp -r apps/web/public/. staging/
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./staging
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: "deploy web: ${{ github.event.head_commit.message }}"

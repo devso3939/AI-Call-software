@@ -41,8 +41,13 @@
   .dlrow a{flex:1;display:block;padding:11px;border-radius:12px;text-decoration:none;text-align:center;
     background:rgba(148,163,184,.07);border:1px solid var(--border);color:var(--text);font-weight:700;font-size:.85rem}
   .dlrow a:hover{background:rgba(148,163,184,.13)}
-  .qr{margin:20px auto 0;background:#fff;border-radius:16px;padding:12px;width:172px;height:172px;display:flex}
-  .qr img{width:100%;height:100%;image-rendering:pixelated}
+  .qrgrid{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:18px}
+  .qrcell{background:#fff;border-radius:14px;padding:10px;width:132px;cursor:pointer;text-align:center;
+    transition:transform .15s ease, box-shadow .15s ease}
+  .qrcell:hover{transform:translateY(-3px);box-shadow:0 6px 18px rgba(0,0,0,.45)}
+  .qrcell img{width:100%;height:auto;image-rendering:pixelated;border-radius:6px;display:block}
+  .qrlab{font-size:.72rem;font-weight:700;color:#0f172a;margin-top:6px;line-height:1.35}
+  .qrlab span{font-weight:500;color:#475569;font-size:.62rem}
   .qrt{font-size:.75rem;color:var(--muted);margin-top:8px}
   .sec{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:22px 24px;margin-bottom:18px;
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
@@ -78,7 +83,7 @@
     <h2>Install OpenCall on Android</h2>
     <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.2 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.4 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
       <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
@@ -91,12 +96,25 @@
       <a href="app.html">Open web app instead</a>
       <a href="app.html" onclick="sessionStorage.setItem('pwaHint','1')">📲 Install as web app (no APK)</a>
     </div>
-    <div class="qr"><img alt="QR code to this page" id="qrimg"></div>
-    <p class="qrt">Scan with your phone camera to open this page on your Android</p>
+    <div class="qrgrid">
+      <div class="qrcell" onclick="location.href='https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk'">
+        <img alt="QR: download OpenCall Gateway APK" src="qr/gateway-apk.png">
+        <div class="qrlab">🟡 Gateway APK<br><span>automatic SIM calls + SMS</span></div>
+      </div>
+      <div class="qrcell" onclick="location.href='https://devso3939.github.io/AI-Call-software/install.html'">
+        <img alt="QR: this install page" src="qr/install-page.png">
+        <div class="qrlab">📱 This page<br><span>guide + web app</span></div>
+      </div>
+      <div class="qrcell" onclick="location.href='https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-bridge.apk'">
+        <img alt="QR: download OpenCall Bridge APK" src="qr/bridge-apk.png">
+        <div class="qrlab">🟢 Bridge APK<br><span>zero permissions, tap mode</span></div>
+      </div>
+    </div>
+    <p class="qrt">Scan with your phone camera — Gateway QR downloads the automatic APK directly</p>
   </div>
 
   <div class="sec">
-    <h3>🟡 What's new in v1.5.2</h3>
+    <h3>🟡 What's new in v1.5.4</h3>
     <div class="ok" style="margin-bottom:10px">
       <p><strong>Automatic mode (Gateway APK) — how you expected it to work:</strong> place a call in the web app → your phone <strong>dials the number by itself</strong> from your SIM (speaker auto-on) → when the person answers, the audio bridges into your browser. Send an SMS in the web app → your phone <strong>sends it by itself</strong> over the SIM and reports sent/delivered/failed back. Incoming cellular call while the gateway runs → accept it from the web app and talk in the browser. Everything in the background — <strong>zero taps on the phone</strong> after setup.</p>
     </div>
@@ -215,19 +233,6 @@
 </div>
 
 <script>
-// QR code via public canvas-free generator (qrcode library, CDN)
-(function(){
-  const s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js';
-  s.onload = () => {
-    try {
-      QRCode.toDataURL(location.href.split('#')[0], { width: 300, margin: 1, color: { dark: '#070b14', light: '#ffffff' } },
-        (err, url) => { if (!err) document.getElementById('qrimg').src = url; });
-    } catch (e) {}
-  };
-  document.head.appendChild(s);
-})();
-
 // OEM tab switching
 document.getElementById('otabs').addEventListener('click', (e) => {
   const b = e.target.closest('.otab'); if (!b) return;
