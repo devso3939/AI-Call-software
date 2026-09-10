@@ -125,6 +125,10 @@ class GatewayService : Service() {
             }
 
             try {
+                // 0) keep the agent-mode flag in sync (MainActivity toggles it)
+                FullCallService.autoAnswerInbound =
+                    prefs.getBoolean("agentMode", false)
+
                 // 1) heartbeat every iteration (marks online; server times out after 90 s)
                 val battery = readBattery()
                 Rpc.rpc(
@@ -200,6 +204,15 @@ class GatewayService : Service() {
                             // open the audio bridge NOW so the browser's offer is
                             // answered the moment it lands
                             ensureBridge().joinAndAnswer(room, callId)
+                        } else {
+                            // 1.5.6: honest failure — without this the web call
+                            // panel stays "dialing" until its timeout.
+                            result = JSONObject().put("error", "dial failed — CALL_PHONE denied or Telecom rejected the dial")
+                            try {
+                                Rpc.rpc("update_gateway_call", JSONObject()
+                                    .put("p_device_id", devId).put("p_secret", secret)
+                                    .put("p_call_id", callId).put("p_state", "failed"))
+                            } catch (_: Exception) {}
                         }
                     }
                 }
@@ -293,6 +306,7 @@ class GatewayService : Service() {
                         .put("lastState", FullCallService.lastState)
                         .put("active", FullCallService.active)
                         .put("ringing", FullCallService.ringing)
+                        .put("agentMode", FullCallService.autoAnswerInbound)
                 }
 
                 "ping" -> { ok = true }

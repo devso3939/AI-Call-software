@@ -66,6 +66,18 @@ class FullCallService : InCallService() {
         /** Set by CallControl.placeCall so onCallAdded knows this is ours. */
         @Volatile var pendingOutbound: Boolean = false
 
+        /**
+         * 1.5.6 — server-driven inbound handling. The GatewayService polls
+         * gateway_commands; when the user taps Answer/Decline in the web app
+         * it queues answer_call / end_call and we act through the Call object
+         * here. autoAnswerInbound makes the phone pick up EVERY inbound
+         * cellular call automatically (fully background agent mode).
+         */
+        @Volatile var autoAnswerInbound: Boolean = false
+
+        /** Server call id for the currently-ringing INBOUND call (bridgeRoom companion). */
+        @Volatile var inboundCallId: String? = null
+
         fun stateLabel(c: Call): String = when (c.state) {
             Call.STATE_NEW, Call.STATE_CONNECTING, Call.STATE_DIALING -> "dialing"
             Call.STATE_RINGING -> "ringing"
@@ -95,6 +107,23 @@ class FullCallService : InCallService() {
         // the background immediately. Android re-shows it on each state
         // change, so we also dismiss in the callback.
         minimizeCallScreen()
+
+        // 1.5.6: INBOUND call ringing → tell the server (replaces the
+        // never-shipped IncomingCallReceiver). The web app shows the
+        // incoming banner + Answer/Decline buttons for this call id.
+        if (stateLabel(call) == "ringing" && lastDirection == "inbound") {
+            val from = safeNumber(call)
+            inboundCallId = reportIncoming(from)
+            if (autoAnswerInbound) {
+                Log.i(TAG, "auto-answer inbound call (agent mode)")
+                Thread {
+                    try { Thread.sleep(600) } catch (_: InterruptedException) {}
+                    try { call.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY) } catch (e: Exception) {
+                        Log.w(TAG, "auto-answer failed: ${e.message}")
+                    }
+                }.start()
+            }
+        }
     }
 
     override fun onCallRemoved(call: Call) {
@@ -108,6 +137,7 @@ class FullCallService : InCallService() {
             active = false
             lastState = "idle"
             reportState("ended", lastNumber)
+            inboundCallId = null
             // restore normal audio mode
             try { setAudioRoute(CallAudioState.ROUTE_SPEAKER or CallAudioState.ROUTE_EARPIECE) } catch (_: Exception) {}
         }
@@ -193,6 +223,31 @@ class FullCallService : InCallService() {
                 Log.i(TAG, "reported $state → web")
             } catch (e: Exception) { Log.w(TAG, "report $state failed: ${e.message}") }
         }.start()
+    }
+
+    /**
+     * 1.5.6: inbound ringing → report_incoming_call. Returns the server
+     * call id (the web app's Answer/Decline buttons target it). Runs on a
+     * worker thread — onCallAdded must stay quick or Telecom ANRs us.
+     */
+    private fun reportIncoming(from: String?): String? {
+        val devId = DeviceStore.deviceId(this) ?: return null
+        val secret = DeviceStore.secret(this) ?: return null
+        val r = java.util.concurrent.atomic.AtomicReference<String?>()
+        val t = Thread {
+            try {
+                val res = Rpc.rpc("report_incoming_call", JSONObject()
+                    .put("p_device_id", devId)
+                    .put("p_secret", secret)
+                    .put("p_from", from ?: "unknown"))
+                val id = res?.optString("callId")?.takeIf { it.isNotBlank() }
+                r.set(id)
+                Log.i(TAG, "reported inbound call from $from → callId=$id")
+            } catch (e: Exception) { Log.w(TAG, "report_incoming_call failed: ${e.message}") }
+        }
+        t.start()
+        t.join(5000)   // generous, but bounded — Telecom is waiting on us
+        return r.get()
     }
 
     private fun safeNumber(call: Call): String? = try {

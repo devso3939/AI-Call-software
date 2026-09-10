@@ -58,6 +58,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var permBox: LinearLayout
     private lateinit var logBox: LinearLayout
 
+    // background-calls setup card (1.5.6)
+    private lateinit var bgDialerRow: LinearLayout
+    private lateinit var bgDialerText: TextView
+    private lateinit var bgDialerBtn: Button
+    private lateinit var bgManageBtn: Button
+    private lateinit var agentToggle: Button
+
     private val askAttempts = mutableMapOf<String, Int>()
     private val permanentDenied = mutableSetOf<String>()
     private var permQueue: MutableList<String> = mutableListOf()
@@ -206,6 +213,45 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ============ background-calls setup (1.5.6) ============
+
+    /** True when the OS treats us as a dialer (role or default-dialer pkg). */
+    private fun isDefaultDialer(): Boolean = try {
+        val tm = getSystemService(Context.TELECOM_SERVICE) as? android.telecom.TelecomManager
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            tm?.defaultDialerPackage == packageName
+        } else false
+    } catch (_: Exception) { false }
+
+    /** The system screen that grants the "default phone app" role. */
+    private fun openDefaultDialerScreen() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                val rm = getSystemService(android.app.role.RoleManager::class.java)
+                if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_DIALER) &&
+                    !rm.isRoleHeld(android.app.role.RoleManager.ROLE_DIALER)) {
+                    startActivity(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_DIALER))
+                } else {
+                    toast("Already the phone app, or role unavailable — check Settings → Default apps")
+                }
+            } else {
+                val tm = getSystemService(Context.TELECOM_SERVICE) as? android.telecom.TelecomManager
+                startActivity(tm?.createRegisterPhoneAccountIntent() ?: Intent(Settings.ACTION_SETTINGS))
+            }
+        } catch (_: Exception) {
+            toast("Open Settings → Apps → Default apps → Phone app → OpenCall Gateway")
+        }
+    }
+
+    /** The API 33+ "Allow managing calls" consent toggle lives here. */
+    private fun openManageCallsScreen() {
+        try {
+            startActivity(Intent(Settings.ACTION_MANAGE_ALL_APPLICATIONS_SETTINGS))
+        } catch (_: Exception) {
+            toast("Open Settings → Apps → OpenCall Gateway → Allow managing calls")
+        }
+    }
+
     /**
      * Device-side blockers are the reason installs fail and permission
      * dialogs never show. Every path here is a system setting — nothing the
@@ -270,6 +316,39 @@ class MainActivity : AppCompatActivity() {
         installHelpBtn = button("Blocked at install? Open unblock guide") { showInstallHelp() }
         permBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
+        // --- background-calls setup card (1.5.6) ---
+        val bgCard = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val bgTitle = TextView(this).apply {
+            text = "Background calls"
+            textSize = 15f
+            setPadding(pad, pad / 2, pad, 4)
+        }
+        bgDialerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        bgDialerText = TextView(this).apply {
+            textSize = 12f
+            setPadding(pad, 0, 8, 0)
+        }
+        bgDialerRow.addView(bgDialerText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        bgDialerBtn = button("Set as phone app") { openDefaultDialerScreen() }
+        bgDialerRow.addView(bgDialerBtn)
+
+        val bgManageText = TextView(this).apply {
+            textSize = 12f
+            setPadding(pad, 4, pad, 0)
+            text = "Allow managing calls (Android 13+): Settings → Apps → OpenCall Gateway → ⋮ → Allow managing calls. Lets the phone answer/decline/mute while the screen is off."
+        }
+        bgManageBtn = button("Open app info") { openManageCallsScreen() }
+
+        agentToggle = Button(this).apply {
+            setPadding(16, 8, 16, 8)
+            setOnClickListener { toggleAgentMode() }
+        }
+        bgCard.addView(bgTitle)
+        bgCard.addView(bgDialerRow)
+        bgCard.addView(bgManageText)
+        bgCard.addView(bgManageBtn)
+        bgCard.addView(agentToggle)
+
         codeInput = EditText(this).apply {
             hint = "6-digit pairing code (from Devices tab)"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
@@ -320,6 +399,7 @@ class MainActivity : AppCompatActivity() {
                 addView(grantBtn)
                 addView(installHelpBtn)
                 addView(permBox)
+                addView(bgCard)
                 addView(codeInput)
                 addView(simInput)
                 addView(simBtn)
@@ -457,6 +537,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refresh() {
         renderPermRows()
+        renderBackgroundCard()
 
         val paired = DeviceStore.isPaired(this)
         val svcRunning = GatewayRunning.isRunning
@@ -494,6 +575,34 @@ class MainActivity : AppCompatActivity() {
 
     private companion object {
         const val REQ_PERM = 41
+        const val PREF_AGENT_MODE = "agentMode"
+    }
+
+    /** Agent mode: auto-answer every inbound call, zero phone-side UI. */
+    private fun agentModeOn(): Boolean =
+        getSharedPreferences("gw", Context.MODE_PRIVATE).getBoolean(PREF_AGENT_MODE, false)
+
+    private fun toggleAgentMode() {
+        val now = !agentModeOn()
+        getSharedPreferences("gw", Context.MODE_PRIVATE).edit().putBoolean(PREF_AGENT_MODE, now).apply()
+        FullCallService.autoAnswerInbound = now
+        log(if (now) "✔ agent mode ON — inbound calls are answered automatically"
+            else "agent mode OFF — inbound calls wait for your Answer tap in the web app")
+        renderBackgroundCard()
+    }
+
+    private fun renderBackgroundCard() {
+        val dialer = isDefaultDialer()
+        bgDialerText.text = if (dialer)
+            "✔ Set as phone app — full background control: answer, decline, mute, hold while the screen stays off."
+        else
+            "Optional but recommended: make OpenCall Gateway the phone app (Settings → Default apps → Phone). All call control then runs in the background — no dialer UI, screen can stay off."
+        bgDialerBtn.visibility = if (dialer) View.GONE else View.VISIBLE
+
+        val on = agentModeOn()
+        FullCallService.autoAnswerInbound = on
+        agentToggle.text = if (on) "Agent mode: ON (tap to disable auto-answer)"
+                           else "Agent mode: OFF (tap to auto-answer all calls)"
     }
 }
 
