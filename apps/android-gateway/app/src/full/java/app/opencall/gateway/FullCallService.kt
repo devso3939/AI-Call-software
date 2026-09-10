@@ -1,5 +1,6 @@
 package app.opencall.gateway
 
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.telecom.Call
@@ -93,7 +94,12 @@ class FullCallService : InCallService() {
          * to telephony on modern Android; routing through the InCallService
          * (CallAudioState) is what actually sticks. Returns true when the
          * route was applied through this service (i.e. the ICS is bound).
+         *
+         * @JvmStatic is REQUIRED: AudioRoute.kt (shared src/main, also in the
+         * lite flavor) reaches this via reflection on the OUTER class, and
+         * companion members only land as outer-class statics with @JvmStatic.
          */
+        @JvmStatic
         fun setSpeakerRoute(on: Boolean): Boolean = try {
             val svc = instance ?: return false
             svc.setAudioRoute(

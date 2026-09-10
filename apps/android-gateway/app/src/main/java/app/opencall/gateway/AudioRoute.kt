@@ -57,10 +57,20 @@ object AudioRoute {
     /** True when the last tryInCallSpeaker actually routed via InCallService. */
     @Volatile private var inCallRouteApplied: Boolean = false
 
-    /** Best-effort telecom route flip (works only when the ICS is bound). */
+    /**
+     * Best-effort telecom route flip (works only when the ICS is bound).
+     *
+     * 1.5.7 CI fix — this file lives in src/main (BOTH flavors compile it),
+     * but FullCallService exists only in src/full, so a direct reference
+     * broke the lite build ("Unresolved reference 'FullCallService'").
+     * Reflection keeps the same behavior: no-op → false when the class or
+     * method is absent (lite), real call when the full ICS is in.
+     */
     private fun tryInCallSpeaker(on: Boolean) {
         inCallRouteApplied = try {
-            FullCallService.setSpeakerRoute(on)
+            val cls = Class.forName("app.opencall.gateway.FullCallService")
+            val m = cls.getMethod("setSpeakerRoute", Boolean::class.javaPrimitiveType)
+            m.invoke(null, on) as? Boolean ?: false
         } catch (_: Throwable) {
             false
         }
