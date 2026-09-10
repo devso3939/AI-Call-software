@@ -75,15 +75,17 @@
   </div>
 
   <div class="hero">
-    <h2>Install the Gateway app</h2>
-    <p>Turns your spare Android phone into a free cellular gateway for calls &amp; SMS — paired to your OpenCall account.</p>
+    <h2>Install OpenCall on Android</h2>
+    <p>Two apps, one pairing: <strong style="color:var(--mint400)">Bridge</strong> for internet calling (installs with no warnings) and <strong style="color:#fcd34d">Gateway</strong> for full SIM power (SMS + cellular calls).</p>
     <div class="badges">
-      <span class="badge">✓ Signed release build</span>
-      <span class="badge">✓ v1.4.0 · Android 8.0+</span>
-      <span class="badge">✓ Fresh app identity</span>
+      <span class="badge">✓ v1.5.0 · Android 8.0+</span>
+      <span class="badge">✓ Signed release builds</span>
+      <span class="badge">🟢 Bridge: no Play Protect warning</span>
     </div>
+    <a class="dl" href="https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-bridge.apk"
+       download id="dlbtn" style="background:linear-gradient(135deg,var(--mint),var(--cyan))">🟢 Download OpenCall Bridge — installs with NO warning</a>
     <a class="dl" href="https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk"
-       download id="dlbtn">⬇️ Download APK (latest signed build)</a>
+       download id="dlbtn2" style="background:rgba(251,191,36,.14);color:#fde68a;border:1px solid rgba(251,191,36,.4);box-shadow:none;margin-top:10px;font-size:.95rem">🟡 Download OpenCall Gateway (full SIM) — may show a warning*</a>
     <div class="dlrow">
       <a href="app.html">Open web app instead</a>
       <a href="app.html" onclick="sessionStorage.setItem('pwaHint','1')">📲 Install as web app (no APK)</a>
@@ -100,6 +102,7 @@
       <p style="margin-top:8px">🟢 <strong>OpenCall Bridge</strong> (<code>app.opencall.bridge</code>) — internet calling with your microphone. <strong>Zero SMS/Phone permissions → installs with NO warning.</strong> Use this to call from the web app through your phone's mic &amp; speaker.</p>
       <p style="margin-top:6px">🟡 <strong>OpenCall Gateway</strong> (<code>app.opencall.gateway2</code>) — full SIM power: SMS relay in/out, dial/answer cellular calls. The warning still appears for this one <em>until you register the app</em> — see the permanent fix below.</p>
     </div>
+    <p style="font-size:.72rem;color:var(--muted);margin-top:10px">* "May show a warning" = Google's one-tap <strong>More details → Install anyway</strong> dialog — not a malware verdict. Register the app (section below) and it disappears forever.</p>
   </div>
 
   <div class="sec">
