@@ -39,6 +39,10 @@ class WebRtcBridge(
     private val ctx: Context,
     private val deviceId: String,
     private val deviceSecret: String,
+    /** fires once when the peer connection reaches CONNECTED (v1.5.1, used by Bridge) */
+    private val onConnected: (() -> Unit)? = null,
+    /** fires when the peer connection irrevocably FAILED (not transient disconnects) */
+    private val onGone: (() -> Unit)? = null,
 ) {
     companion object {
         private const val TAG = "OpenCall/WebRTC"
@@ -129,9 +133,17 @@ class WebRtcBridge(
             }
             override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) {
                 Log.i(TAG, "connection state → $newState")
-                if (newState == PeerConnection.PeerConnectionState.FAILED ||
-                    newState == PeerConnection.PeerConnectionState.DISCONNECTED) {
-                    // let ICE restart attempts happen; browser will signal bye if it gives up
+                when (newState) {
+                    PeerConnection.PeerConnectionState.CONNECTED ->
+                        // audio path live — the honest "call is active" signal
+                        try { onConnected?.invoke() } catch (_: Exception) {}
+                    PeerConnection.PeerConnectionState.FAILED ->
+                        // ICE gave up for good — report failure upward
+                        try { onGone?.invoke() } catch (_: Exception) {}
+                    else -> {
+                        // DISCONNECTED can be transient (ICE restart) — browser
+                        // signals 'bye' if it gives up; do nothing here.
+                    }
                 }
             }
             override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState) {

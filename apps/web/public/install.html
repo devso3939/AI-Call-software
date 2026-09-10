@@ -78,7 +78,7 @@
     <h2>Install OpenCall on Android</h2>
     <p>Two apps, one pairing: <strong style="color:var(--mint400)">Bridge</strong> for internet calling (installs with no warnings) and <strong style="color:#fcd34d">Gateway</strong> for full SIM power (SMS + cellular calls).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.0 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.1 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟢 Bridge: no Play Protect warning</span>
     </div>
@@ -92,6 +92,20 @@
     </div>
     <div class="qr"><img alt="QR code to this page" id="qrimg"></div>
     <p class="qrt">Scan with your phone camera to open this page on your Android</p>
+  </div>
+
+  <div class="sec">
+    <h3>🟢 What's new in v1.5.1 — Bridge now actually works</h3>
+    <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">v1.5.0's Bridge paired fine but had a bug: it never picked up commands from the server, so calls stayed <strong style="color:var(--text)">"created"</strong> and SMS stayed <strong style="color:var(--text)">"queued"</strong>. v1.5.1 fixes it with a <strong style="color:var(--text)">tap-to-dial / tap-to-send</strong> design that keeps Bridge 100% permission-free:</p>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>📞 Calling via Bridge (v1.5.1):</strong> place a call in the web app → a heads-up notification appears on your phone: <em>"Tap to dial +995…"</em> → tap it, the dialer opens pre-filled, press call → the moment the person answers, audio is bridged into your browser. The web app shows <strong style="color:var(--text)">"Waiting for you to dial via your Android…"</strong> until you tap (90 s to tap, otherwise the call expires).</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>💬 SMS via Bridge (v1.5.1):</strong> send an SMS in the web app → a notification appears: <em>"Tap to send SMS"</em> → tap it, your messaging app opens pre-filled with the recipient + text → press send. The message shows <strong style="color:var(--text)">"tap the notification on your phone to send"</strong> in the web app until you do.</p>
+    </div>
+    <div class="warn">
+      <p><strong>One more thing to set once:</strong> open the Bridge app → enter your own SIM number (e.g. <code>+995598…</code>) → <strong>Save SIM number</strong>. This makes the web app show your real number instead of "not set" and marks you as a caller.</p>
+    </div>
   </div>
 
   <div class="sec">
@@ -123,6 +137,7 @@
       <div class="step"><div class="n">2</div><p>Open it. If the sensitive-data dialog appears on <strong>Gateway</strong>: tap <strong>More details → Install anyway</strong> (or register first, per the section above). <strong>Bridge never shows it.</strong></p></div>
       <div class="step"><div class="n">3</div><p>In the web app open the <strong>Devices</strong> tab → <strong>Create pairing code</strong> → type the 6 digits into the app → <strong>Pair</strong>.</p></div>
       <div class="step"><div class="n">4</div><p>Tap <strong>Start gateway</strong> (Gateway) or <strong>Start bridge</strong> (Bridge). The status screen shows the exact version + package name — useful for verification.</p></div>
+      <div class="step"><div class="n">5</div><p><strong>Bridge users:</strong> on the app's main screen enter your SIM number and tap <strong>Save SIM number</strong> — the web app then shows it under your device in the Devices tab.</p></div>
     </div>
     <div class="ok" style="margin-top:14px">
       <p><strong>No APK at all?</strong> The <a href="app.html" style="color:var(--mint400)">web app</a> installs as a PWA (Chrome → ⋮ → Install / “Add to Home screen”) with zero Play Protect involvement — full internet calling, no SIM relay.</p>

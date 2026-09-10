@@ -331,6 +331,7 @@ let activeTwilioCall = null;     // current Twilio Call object (when call.isPstn
 /* SIM gateway (your paired Android = free SMS + cellular calls) */
 let gatewayDevices = [];         // rows from list_gateway_devices()
 let gatewayOnline = null;        // best online device row, or null
+let gatewayFlavor = null;        // 'bridge' (lite, tap-to-handoff) | 'gateway' (full, automatic) | null
 let smsList = [];                // recent sms_messages rows
 let smsTo = '';
 let smsBody = '';
@@ -531,6 +532,10 @@ async function refreshDevices() {
     const cutoff = Date.now() - 120000;
     const online = data.filter(d => d.online && d.last_seen_at && (new Date(d.last_seen_at).getTime()) > cutoff);
     gatewayOnline = online.sort((a, b) => new Date(b.last_seen_at) - new Date(a.last_seen_at))[0] || null;
+    // lite (app.opencall.bridge) = guided tap-to-dial / tap-to-send handoff;
+    // full (app.opencall.gateway2) = automatic dialing + SMS relay
+    const v = (gatewayOnline && gatewayOnline.app_version) || '';
+    gatewayFlavor = v.includes('-lite') ? 'bridge' : v.includes('-full') ? 'gateway' : gatewayFlavor;
     if (gatewayOnline && pairingCode) { pairingCode = null; showToast('Android device paired ✓'); }
   }
   if (me) renderApp();
@@ -549,7 +554,9 @@ async function sendSms() {
   const { error } = await sb.rpc('send_sms', { p_to: to, p_body: body });
   if (error) return setError(honestError(error));
   smsBody = '';
-  showToast('SMS queued — your phone sends it from your number');
+  showToast(gatewayFlavor === 'bridge'
+    ? 'SMS sent to your phone — tap the notification to send it from your number'
+    : 'SMS queued — your phone sends it from your number');
   refreshSms();
 }
 
@@ -623,18 +630,24 @@ async function placeGatewayCall(e164) {
   setError('');
   const { data, error } = await sb.rpc('request_gateway_call', { p_to: dest });
   if (error) { setError(honestError(error)); renderApp(); return; }
+  const isBridge = gatewayFlavor === 'bridge';
   call = { callId: data.id, phase: 'dialing', remoteName: dest, peerId: null, isGuest: false, isGateway: true,
-           quality: 'unknown', rttMs: null, startedAt: Date.now(), routeNote: 'FREE · SIM gateway · your Android dials from your number', role: 'caller' };
+           quality: 'unknown', rttMs: null, startedAt: Date.now(),
+           routeNote: isBridge
+             ? 'FREE · SIM bridge · tap the notification on your phone to dial from your number'
+             : 'FREE · SIM gateway · your Android dials from your number',
+           role: 'caller' };
   eventSeq = 0;
   renderApp();
   startEventPoll();
   await startMedia('caller');   // offer waits in calls_events until the phone joins the bridge
+  clearTimeout(ringTimeout);
   ringTimeout = setTimeout(async () => {
     if (call.phase !== 'active') {
       try { await sb.rpc('queue_end_call', { p_call_id: call.callId }); } catch (e) {}
-      endCallLocal('no answer after 45 s');
+      endCallLocal(isBridge ? 'tap-to-dial not used within 90 s' : 'no answer after 45 s');
     }
-  }, RING_TIMEOUT_S * 1000);
+  }, (isBridge ? 90 : RING_TIMEOUT_S) * 1000);
 }
 
 /* inbound cellular call: answer on the phone itself (talk on the handset) */
@@ -1329,7 +1342,7 @@ function tabDialer() {
     </div>
   </div>
   <p class="tiny" style="margin:12px 2px 0">
-    ${gwReady ? `🤖 SIM gateway <span class="mint">online</span> · ${esc(gatewayOnline.name || 'Android phone')} · your number <span class="mint">${esc(gatewayOnline.sim_number || 'unknown')}</span> · SMS + calls from your own SIM, free · ` : ''}
+    ${gwReady ? `🤖 SIM gateway <span class="mint">online</span> · ${esc(gatewayOnline.name || 'Android phone')}${gatewayFlavor === 'bridge' ? ' · <span style="color:#fcd34d">Bridge mode</span>' : ''} · your number <span class="mint">${esc(gatewayOnline.sim_number || (gatewayFlavor === 'bridge' ? 'not set — save it in the phone app' : 'unknown'))}</span> · calls + SMS from your own SIM, free · ` : ''}
     ${pstnConfigured === false ? '📱 Twilio phone calls: not configured. ' + (gwReady ? 'Your Android gateway covers real phone calls free.' : 'Internet calls work now. Add Twilio credentials or pair your Android phone in Devices.') :
       (pstnConfigured && !twilioReady ? '📱 Connecting to the Twilio phone network…' :
       (pstnConfigured ? `📱 Twilio live · caller ID <span class="mint">${esc(pstnCallerId)}</span> · carrier rates apply` : ''))}
@@ -1374,7 +1387,10 @@ function smsPill(m) {
   const s = m.status || '';
   const cls = s === 'failed' ? 'failed' : (s === 'sent' || s === 'delivered') ? 'sent'
             : (s === 'queued' || s === 'pending') ? 'queued' : 'completed';
-  return `<span class="pill ${cls}">${esc(s || 'unknown')}</span>`;
+  // bridge handoff: the message stays 'queued' until the user taps and sends
+  const handoff = gatewayFlavor === 'bridge' && s === 'queued'
+    ? ' · <span style="color:#fcd34d">tap the notification on your phone to send</span>' : '';
+  return `<span class="pill ${cls}">${esc(s || 'unknown')}</span>${handoff}`;
 }
 function relTime(ts) {
   if (!ts) return 'never';
@@ -1393,7 +1409,7 @@ function tabSms() {
     <div class="card">
       <h2>New message</h2>
       ${ready
-        ? `<p class="tiny" style="margin:0 0 10px">From <span class="mint">${esc(gatewayOnline.sim_number || gatewayOnline.name || 'your SIM')}</span> — real SMS, your number, free (carrier SMS rates may apply on the SIM plan).</p>`
+        ? `<p class="tiny" style="margin:0 0 10px">From <span class="mint">${esc(gatewayOnline.sim_number || gatewayOnline.name || 'your SIM')}</span> — real SMS, your number, free (carrier SMS rates may apply on the SIM plan).${gatewayFlavor === 'bridge' ? ' <strong style="color:#fcd34d">Bridge mode:</strong> a notification pops on your phone — tap it and your messaging app opens pre-filled; press send there.' : ''}</p>`
         : '<div class="banner" style="border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.07);color:#fcd34d">No gateway device online. Pair your Android phone in <strong>Devices</strong> to send and receive SMS from your own number.</div>'}
       <label class="label">To</label>
       <input class="input" id="sms-to" placeholder="+995599123456" value="${esc(smsTo)}" oninput="smsTo=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('sms-body').focus()}" ${ready ? '' : 'disabled'} autocomplete="off">
@@ -1429,18 +1445,25 @@ function tabDevices() {
   <div class="card">
     <h2>Your devices</h2>
     <p class="muted">Pair your Android phone once — it becomes your free gateway for real SMS and real cellular calls on your own number, worldwide.</p>
-    ${gatewayDevices.length === 0 ? '<p class="muted">No devices paired yet.</p>' : gatewayDevices.map(d => `
+    ${gatewayDevices.length === 0 ? '<p class="muted">No devices paired yet.</p>' : gatewayDevices.map(d => {
+      const fl = ((d.app_version || '').includes('-lite')) ? 'bridge' : ((d.app_version || '').includes('-full')) ? 'gateway' : null;
+      const flBadge = fl === 'bridge'
+        ? '<span class="pill queued">Bridge · tap-to-dial / tap-to-send</span>'
+        : fl === 'gateway'
+          ? '<span class="pill completed">Gateway · automatic dial + SMS</span>'
+          : '';
+      return `
       <div class="contact">
         <div>
-          <strong>${esc(d.name || 'Android phone')}</strong>
-          <div class="tiny mint">${esc(d.sim_number || 'SIM number unknown')}</div>
+          <strong>${esc(d.name || 'Android phone')}</strong> ${flBadge}
+          <div class="tiny mint">${esc(d.sim_number || 'SIM number unknown — set it in the phone app (Bridge: “Save SIM number”)')}</div>
           <div class="tiny">battery ${d.battery != null ? esc(d.battery) + '%' : '—'} · v${esc(d.app_version || '?')} · last seen ${relTime(d.last_seen_at)}</div>
         </div>
         <div class="row">
           <span class="pill ${d.online ? 'completed' : 'failed'}">${d.online ? 'online' : 'offline'}</span>
           <button class="btn btn-ghost" onclick="unpairDevice('${d.id}')">Unpair</button>
         </div>
-      </div>`).join('')}
+      </div>`; }).join('')}
     <button class="btn btn-primary" ${codeFresh ? 'disabled' : ''} onclick="startPairing()">${codeFresh ? 'Code active…' : '＋ Pair a new device'}</button>
     ${codeFresh ? `<div class="banner" style="margin-top:12px">
       <div class="row between" style="flex-wrap:nowrap">
@@ -1635,9 +1658,10 @@ function canCall(v) { return v && v.trim().length >= 3; }
 function callBanner() {
   if (call.phase === 'dialing' && call.isGateway) {
     const secs = Math.floor((Date.now() - call.startedAt) / 1000);
+    const bridge = gatewayFlavor === 'bridge';
     return `<div class="bigcall"><div class="row between">
-      <div><strong>🤖 Dialing ${esc(call.remoteName)} via your Android…</strong> <span class="muted pulse">◉ phone is dialing</span>
-      <div class="tiny">${esc(call.routeNote)} · ${secs}s</div></div>
+      <div><strong>🤖 ${bridge ? 'Waiting for you to dial ' : 'Dialing '}${esc(call.remoteName)} via your Android…</strong> <span class="muted pulse">◉ ${bridge ? 'tap the OpenCall notification on your phone' : 'phone is dialing'}</span>
+      <div class="tiny">${esc(call.routeNote)} · ${secs}s${bridge ? ' · expires after 90 s if not tapped' : ''}</div></div>
       <button class="btn btn-danger" onclick="hangup()">End</button></div></div>`;
   }
   if (call.phase === 'dialing') {
@@ -1679,9 +1703,13 @@ function callBanner() {
   }
   if (call.phase === 'active') {
     const listenOnly = !!call.stateNote && call.stateNote.includes('listen-only');
+    const bridgeNote = (call.isGateway && gatewayFlavor === 'bridge')
+      ? `<div class="tiny mint">🔊 audio passes through your phone's speaker + mic (acoustic bridge) · keep the phone close, other sounds off</div>`
+      : '';
     return `<div class="bigcall"><div class="row between">
       <div><strong>🔴 On call with ${esc(call.remoteName)}</strong>
       <div class="tiny">${call.isPstn ? esc(call.routeNote) + ' · ' : ''}quality: <span class="qdot ${call.quality}"></span> <span class="qlabel">${call.quality}</span>${call.isPstn ? '' : ' · rtt <span class="rtt">' + (call.rttMs ?? '…') + '</span> ms'}</div>
+      ${bridgeNote}
       ${call.stateNote ? `<div class="tiny micnote" style="color:#b45309">${esc(call.stateNote)}</div>` : ''}</div>
       <div class="row">
         ${listenOnly ? '<button class="btn btn-ghost" onclick="retryMic(this)">Retry mic</button>' : ''}

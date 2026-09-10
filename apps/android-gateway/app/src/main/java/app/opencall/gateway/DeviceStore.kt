@@ -42,6 +42,13 @@ object DeviceStore {
     fun isPaired(ctx: Context): Boolean =
         !deviceId(ctx).isNullOrBlank() && !secret(ctx).isNullOrBlank()
 
+    // ---- self-reported SIM number (display only; lite flavor has no telephony
+    //      access, so the user types their own number once after pairing) ----
+    fun simNumber(ctx: Context): String? = prefs(ctx).getString("simNumber", null)?.takeIf { it.isNotBlank() }
+    fun saveSimNumber(ctx: Context, number: String) {
+        prefs(ctx).edit().putString("simNumber", number.trim()).apply()
+    }
+
     // ---- last signaling seq per call (survives service restarts) ----
     fun sigSeq(ctx: Context, callId: String): Int = prefs(ctx).getInt("sig_$callId", 0)
     fun saveSigSeq(ctx: Context, callId: String, seq: Int) {

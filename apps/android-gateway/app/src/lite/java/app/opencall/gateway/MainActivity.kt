@@ -34,6 +34,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var codeInput: EditText
     private lateinit var pairBtn: Button
+    private lateinit var simInput: EditText
+    private lateinit var simBtn: Button
     private lateinit var startBtn: Button
     private lateinit var stopBtn: Button
     private lateinit var unpairBtn: Button
@@ -89,6 +91,20 @@ class MainActivity : AppCompatActivity() {
             setPadding(pad, pad / 2, pad, pad / 2)
         }
         pairBtn = button("Pair this phone") { doPair() }
+        simInput = EditText(this).apply {
+            hint = "Your SIM number (e.g. +995599123456)"
+            inputType = android.text.InputType.TYPE_CLASS_PHONE
+            setPadding(pad, pad / 2, pad, pad / 2)
+        }
+        simBtn = button("Save SIM number") {
+            val n = simInput.text.toString().trim()
+            if (!n.matches(Regex("^\\+[1-9][0-9]{3,15}$"))) {
+                toast("Enter the number in international format, e.g. +995599123456"); return@button
+            }
+            DeviceStore.saveSimNumber(this@MainActivity, n)
+            log("✔ SIM number saved — shown on your Devices page")
+            refresh()
+        }
         startBtn = button("Start bridge") {
             if (!DeviceStore.isPaired(this@MainActivity)) { toast("Pair first"); return@button }
             BridgeService.start(this@MainActivity)
@@ -110,6 +126,8 @@ class MainActivity : AppCompatActivity() {
                 addView(statusText)
                 addView(codeInput)
                 addView(pairBtn)
+                addView(simInput)
+                addView(simBtn)
                 addView(startBtn)
                 addView(stopBtn)
                 addView(unpairBtn)
@@ -160,7 +178,8 @@ class MainActivity : AppCompatActivity() {
                     "register_gateway_device",
                     JSONObject()
                         .put("p_code", code)
-                        .put("p_name", "Bridge · " + (android.os.Build.MODEL ?: "Android phone")),
+                        .put("p_name", "Bridge · " + (android.os.Build.MODEL ?: "Android phone"))
+                        .putOpt("p_sim_number", DeviceStore.simNumber(this)),
                 )
                 val devId = res?.optString("deviceId").orEmpty()
                 val secret = res?.optString("deviceSecret").orEmpty()
@@ -194,15 +213,23 @@ class MainActivity : AppCompatActivity() {
         sb.append("Paired: ${if (paired) "yes" else "no"}\n")
         sb.append("Bridge service: ${if (svcRunning) "RUNNING" else "stopped"}\n")
         sb.append("Microphone: ${if (micOk) "OK" else "permission missing"}\n")
+        val sim = DeviceStore.simNumber(this)
+        sb.append("SIM number: ${sim ?: "not set (optional)"}\n")
         if (paired) {
             sb.append("Device: ${DeviceStore.deviceId(this)?.take(8)}…\n")
         }
-        sb.append("\nBridge mode = internet calling only (mic). For SMS relay and\n")
-        sb.append("SIM calls install the full OpenCall Gateway APK instead.\n")
+        sb.append("\nHow it works: OpenCall rings a tap-to-dial / tap-to-send\n")
+        sb.append("notification — one tap opens your dialer or Messages app.\n")
+        sb.append("The mic then bridges the audio to your browser. No SMS or\n")
+        sb.append("call permissions needed. For automatic dialing install the\n")
+        sb.append("full OpenCall Gateway APK instead.\n")
         statusText.text = sb.toString()
 
         codeInput.visibility = if (paired) View.GONE else View.VISIBLE
         pairBtn.visibility = if (paired) View.GONE else View.VISIBLE
+        simInput.setText(DeviceStore.simNumber(this) ?: "")
+        simInput.hint = if (paired) "Your SIM number (e.g. +995599123456)" else "Pair first, then set your SIM number"
+        simBtn.isEnabled = paired
         startBtn.isEnabled = paired && !svcRunning
         stopBtn.isEnabled = svcRunning
         unpairBtn.isEnabled = paired
