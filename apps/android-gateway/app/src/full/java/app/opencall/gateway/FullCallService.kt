@@ -59,6 +59,10 @@ class FullCallService : InCallService() {
         /** Mic-mute mirror (Call.isMuted doesn't exist; setMuted is API 34+). */
         @Volatile var micMuted: Boolean = false
 
+        /** Live service instance — Call.setMuted doesn't exist; the API 34+
+            mute entry point is InCallService.setMuted(Boolean). */
+        @Volatile var instance: FullCallService? = null
+
         /** Set by CallControl.placeCall so onCallAdded knows this is ours. */
         @Volatile var pendingOutbound: Boolean = false
 
@@ -75,11 +79,17 @@ class FullCallService : InCallService() {
 
     // ─────────────────────── lifecycle ───────────────────────
 
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
     override fun onCallAdded(call: Call) {
         super.onCallAdded(call)
         calls.add(call)
         call.registerCallback(cb)
-        Log.i(TAG, "call added: ${stateLabel(call)} ${safeNumber(call)} dir=${call.details.callDirection}")
+        val dir = try { "${call.details.callDirection}" } catch (_: Throwable) { "?" }
+        Log.i(TAG, "call added: ${stateLabel(call)} ${safeNumber(call)} dir=$dir")
         pushState(call)
         // The stock dialer UI always pops when a call is added — push it to
         // the background immediately. Android re-shows it on each state
@@ -121,6 +131,7 @@ class FullCallService : InCallService() {
         ringing = false
         active = false
         lastState = "idle"
+        instance = null
         super.onDestroy()
     }
 
@@ -146,11 +157,14 @@ class FullCallService : InCallService() {
         val s = stateLabel(call)
         lastState = s
         lastNumber = safeNumber(call) ?: lastNumber
-        lastDirection = when (call.details.callDirection) {
-            Call.Details.DIRECTION_OUTGOING -> "outbound"
-            Call.Details.DIRECTION_INCOMING -> "inbound"
-            else -> lastDirection
-        }
+        // callDirection is API 29+; minSdk is 26 — read it reflectively-guarded
+        lastDirection = try {
+            when (call.details.callDirection) {
+                Call.Details.DIRECTION_OUTGOING -> "outbound"
+                Call.Details.DIRECTION_INCOMING -> "inbound"
+                else -> lastDirection
+            }
+        } catch (_: Throwable) { lastDirection }
         ringing = calls.any { stateLabel(it) == "ringing" || stateLabel(it) == "dialing" }
         active = calls.any { stateLabel(it) == "active" || stateLabel(it) == "holding" }
 

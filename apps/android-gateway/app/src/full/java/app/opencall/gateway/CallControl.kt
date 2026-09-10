@@ -105,7 +105,7 @@ object CallControl {
             if (ours.isNotEmpty()) {
                 var any = false
                 for (c in ours) {
-                    try { c.disconnect(android.telecom.DisconnectCause(android.telecom.DisconnectCause.LOCAL)); any = true } catch (_: Exception) {}
+                    try { c.disconnect(); any = true } catch (_: Exception) {}
                 }
                 if (any) { Log.i(TAG, "endCall via InCallService Call objects"); return true }
             }
@@ -141,22 +141,27 @@ object CallControl {
     // ─────────── web-app call controls (routed via gateway_commands) ───────────
 
     /**
-     * Call.setMuted() exists only on API 34+ (Android 14). On older builds we
-     * fall back to the WebRTC bridge's mic track + AudioManager mute — either
-     * way the far end stops hearing the phone.
+     * The API 34+ mute entry point is InCallService.setMuted(Boolean) (via
+     * FullCallService.instance). On older builds we fall back to the WebRTC
+     * bridge's mic track + AudioManager mute — either way the far end stops
+     * hearing the phone.
      */
 
     /** Toggle mute on the active cellular call. Returns new state or null. */
     fun toggleMute(ctx: Context): Boolean? = setMuted(ctx, !FullCallService.micMuted)
 
-    /** Mute explicitly. Returns the requested state, or null when nothing to mute. */
+    /** Mute explicitly. Returns the requested state, or null when no call live. */
     fun setMuted(ctx: Context, muted: Boolean): Boolean? = try {
-        val active = FullCallService.calls.firstOrNull {
+        val hasLiveCall = FullCallService.calls.any {
             FullCallService.stateLabel(it) == "active" || FullCallService.stateLabel(it) == "holding"
-        } ?: return null
+        }
+        if (!hasLiveCall) return null
         var applied = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            try { active.setMuted(muted); applied = true } catch (_: Exception) {}
+            // API 34+: the mute entry point lives on the InCallService, not
+            // the Call object. Requires the phone to have default-dialer
+            // privileges on some OEM builds; bridge-mic fallback covers the rest.
+            try { FullCallService.instance?.setMuted(muted); applied = true } catch (_: Exception) {}
         }
         if (!applied) {
             // API < 34: mute the BRIDGE mic — the WebRTC track is what carries
