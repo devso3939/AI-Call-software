@@ -35,97 +35,104 @@ jobs:
           gradle wrapper --gradle-version 8.9 || true
           chmod +x gradlew || true
 
-      # SIGNED RELEASE build — consistent keystore committed in the repo means:
-      #   * same signature on every build (updates install over old versions)
-      #   * properly signed release APK (not a debug build), which is what
-      #     Play Protect expects — this is the fix for the install-block warning
-      - name: Build signed release APK
+      # SIGNED RELEASE builds — same committed keystore for both flavors:
+      #   * full → opencall-gateway.apk  (app.opencall.gateway2): SMS + call relay
+      #   * lite → opencall-bridge.apk   (app.opencall.bridge):  mic-only bridge,
+      #     ZERO sensitive permissions → Play Protect's financial-fraud scan has
+      #     nothing to trigger on → installs without the warning.
+      - name: Build signed release APKs (full + lite)
         run: |
           if [ -x ./gradlew ]; then
-            ./gradlew :app:assembleRelease --no-daemon
+            ./gradlew :app:assembleFullRelease :app:assembleLiteRelease --no-daemon
           else
-            gradle :app:assembleRelease --no-daemon
+            gradle :app:assembleFullRelease :app:assembleLiteRelease --no-daemon
           fi
 
-      # Verify the APK really is signed with the schemes modern Android checks.
-      # NOTE: AGP auto-disables v1 (JAR) signing when minSdk >= 24 — v1 is only
-      # needed on Android 6 and older, and this app requires Android 8+. So the
-      # correct coverage for THIS app is v2 (Android 7+) + v3.
-      - name: Verify APK signature (v2 + v3)
+      # Verify BOTH APKs really are signed with v2 + v3 (Android 7+ coverage).
+      - name: Verify APK signatures (v2 + v3)
         run: |
-          APK=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
-          echo "Verifying: $APK"
-          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose --print-certs "$APK" | tee sig.txt
-          # apksigner prints: "Verified using v2 scheme (APK Signature Scheme v2): true"
-          grep -Eq "Verified using v2 scheme.*: true" sig.txt || (echo "v2 scheme missing" && exit 1)
-          grep -Eq "Verified using v3 scheme.*: true" sig.txt || (echo "v3 scheme missing" && exit 1)
-          echo "Signature OK: v2 + v3 cover all supported devices (Android 8.0+)"
+          for APK in app/build/outputs/apk/full/release/*.apk app/build/outputs/apk/lite/release/*.apk; do
+            echo "Verifying: $APK"
+            $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose --print-certs "$APK" | tee sig.txt
+            grep -Eq "Verified using v2 scheme.*: true" sig.txt || (echo "v2 scheme missing in $APK" && exit 1)
+            grep -Eq "Verified using v3 scheme.*: true" sig.txt || (echo "v3 scheme missing in $APK" && exit 1)
+          done
+          echo "Signatures OK: v2 + v3 cover all supported devices (Android 8.0+)"
 
-      # Give the APK a stable filename so the download URL never changes:
-      #   https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk
-      - name: Rename APK to stable filename
+      # Also verify the lite APK truly contains NO sensitive permissions
+      # (that is the whole point of the lite build).
+      - name: Verify lite APK has zero sensitive permissions
         run: |
-          cd app/build/outputs/apk/release
+          APK=$(ls app/build/outputs/apk/lite/release/*.apk | head -n 1)
+          $ANDROID_HOME/build-tools/34.0.0/aapt2 dump permissions "$APK" > perms.txt
+          cat perms.txt
+          if grep -Eq "android.permission.(SEND_SMS|RECEIVE_SMS|READ_SMS|CALL_PHONE|ANSWER_PHONE_CALLS|READ_PHONE_STATE|READ_PHONE_NUMBERS|RECEIVE_MMS|RECEIVE_WAP_PUSH)" perms.txt; then
+            echo "FAIL: lite APK contains sensitive permissions" && exit 1
+          fi
+          echo "Lite APK clean: no SMS/PHONE permissions declared"
+
+      # Stable filenames so the download URLs never change:
+      #   https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk
+      #   https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-bridge.apk
+      - name: Rename APKs to stable filenames
+        run: |
+          cd app/build/outputs/apk/full/release
           for f in *.apk; do
             [ -e "$f" ] || continue
             case "$f" in opencall-gateway.apk) continue;; esac
             cp "$f" opencall-gateway.apk
           done
-          ls -la
+          cd ../../lite/release
+          for f in *.apk; do
+            [ -e "$f" ] || continue
+            case "$f" in opencall-bridge.apk) continue;; esac
+            cp "$f" opencall-bridge.apk
+          done
+          ls -la ../full/release ../lite/release
 
       # Rolling "latest" release: every build REPLACES the single latest release,
-      # so the URL above ALWAYS serves the newest signed APK.
+      # so the URLs above ALWAYS serve the newest signed APKs.
       - name: Publish to rolling 'latest' release
         if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: OpenCall Gateway — latest APK
+          name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build, so the download link always gives you the newest
-            OpenCall Gateway APK (v1.4.0 · versionCode 5).
+            build (v1.5.0 · versionCode 6). Two APKs:
 
-            ### What's new in v1.4.0 — fresh app identity
-            The previous identity (`app.opencall.gateway` + old signing key) had
-            been flagged by Play Protect in an early build, and the block
-            **followed every later build** because verdicts attach to the app's
-            (package name, signing key) pair. v1.4.0 ships a **new package name**
-            (`app.opencall.gateway2`) and a **brand-new signing key** — Google has
-            never seen this identity before, so there is no cached verdict on it.
-            If the old app is installed, **uninstall it first** (it is not an
-            update — it's a new app), then install this one.
+            | APK | Package | What it does | Play Protect |
+            |---|---|---|---|
+            | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
+            | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
 
-            ### Signed release build (v2 + v3 signature schemes)
-            Code-signed with the new consistent release key, verified for
-            v2 + v3 signature schemes (covers Android 7 → 15+).
+            ### Why the full gateway shows a warning (and the fix)
+            Your exact message — *"This app can request access to sensitive data… Learn more about Play Protect"* — is Google's **financial-fraud prevention** (introduced 2024-2026). It **blocks installation** of unverified apps that request SMS/PHONE permissions from browser sources. It is triggered by the **permission declarations + developer registration status**, NOT by the APK's contents, signature, or version. That is why rebuilding can't remove it, and why registered apps (like other SMS-gateway apps) install silently.
 
-            ### ⚠️ About "Blocked for your protection"
-            Google's **Android Developer Verifier** shows this warning for APKs
-            whose developer is **not registered with Google** — it is an identity
-            check, not a malware verdict. If a block still appears on this fresh
-            identity:
-            1. On the block dialog tap **More details → Install anyway** (1 time).
-            2. Or enable the one-time **Advanced Flow**: Settings → Developer
-               options → *Apps from unverified developers* → Allow, then wait
-               24 h once — afterwards every unverified APK installs with a
-               single tap.
-            3. **Zero-warning forever**: register the app under a free
-               **limited-distribution** developer account (up to 20 devices,
-               no government ID) — this is exactly how other sideloaded apps
-               install with no block.
-            Full guide: **https://devso3939.github.io/AI-Call-software/install.html**
+            **The permanent fix: register the app** — free, ~15 minutes:
+            1. Go to https://android.google.com/developerconsole/ → sign in with your Google account (enable 2-Step Verification if you haven't) → choose the **free "Limited distribution"** account (no fee, no government ID, up to 20 devices).
+            2. Register the package name **`app.opencall.gateway2`** with signing-key SHA-256:
+               `03:3C:51:17:75:9D:2A:B2:2B:8C:A6:16:56:76:5B:2D:F1:9B:9D:73:A1:CB:F0:C7:63:A3:F1:76:0E:6B:27:57`
+            3. On the **Devices** page, add your phone (scan the QR with the phone → enter the code it shows).
+            4. Install `opencall-gateway.apk` — **no warning anymore, on this and every future build.**
 
-            ### Install
-            1. Uninstall any older OpenCall Gateway app first
-            2. Download `opencall-gateway.apk` on your Android phone
-            3. Open it → follow the guide above if Play Protect asks
-            4. Open the app → enter the 6-digit pairing code from the web app's **Devices** tab → Pair
-            5. Tap **Start gateway**
+            Meanwhile: **OpenCall Bridge needs no registration and installs with no warning** — use it if you only need internet calling. For SMS/SIM-call relay, either register (steps above) or tap **More details → Install anyway** on the warning dialog.
+
+            ### Install (either APK)
+            1. Uninstall any older OpenCall app first
+            2. Download on your Android phone (Android 8.0+)
+            3. Open it → if a dialog appears, see the table above
+            4. Enter the 6-digit pairing code from the web app's **Devices** tab → Pair
+            5. Full gateway: **Start gateway** · Bridge: **Start bridge**
 
             ### No APK? Install the web app instead (zero warnings)
             Open https://devso3939.github.io/AI-Call-software/app.html in Chrome
             and tap **📲 Install OpenCall app** — installs like a native app with
             no Play Protect involvement.
-          files: apps/android-gateway/app/build/outputs/apk/release/opencall-gateway.apk
+
+            Full guide: **https://devso3939.github.io/AI-Call-software/install.html**
+          files: |
+            apps/android-gateway/app/build/outputs/apk/full/release/opencall-gateway.apk
+            apps/android-gateway/app/build/outputs/apk/lite/release/opencall-bridge.apk
           fail_on_unmatched_files: true

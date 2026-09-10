@@ -93,22 +93,36 @@
   </div>
 
   <div class="sec">
-    <h3>🚨 v1.4.0 users: fresh identity — read this first</h3>
-    <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">v1.4.0 ships a <strong style="color:var(--text)">brand-new app identity</strong> (new package name <code>app.opencall.gateway2</code> + new signing key) because Play Protect verdicts stick to the old identity forever. So: <strong style="color:var(--text)">uninstall any older OpenCall Gateway first</strong>, then install this one — it's a new app, not an update.</p>
-    <div class="steps">
-      <div class="step"><div class="n">1</div><p><strong>Uninstall</strong> the old OpenCall Gateway (Settings → Apps → OpenCall Gateway → Uninstall).</p></div>
-      <div class="step"><div class="n">2</div><p>Download the v1.4.0 APK above and open it. <strong>Important:</strong> before tapping Open, also clear stale verdicts: Settings → Apps → <strong>Google Play Store</strong> → Storage → <strong>Clear cache</strong>; same for <strong>Google Play services</strong>.</p></div>
-      <div class="step"><div class="n">3</div><p>Restart the phone, then open the APK again.</p></div>
+    <h3>🚨 Your exact message — decoded (v1.5.0)</h3>
+    <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">“<em>This app can request access to sensitive data. This can increase the risk of identity theft or financial fraud.</em>” is Google's <strong style="color:var(--text)">financial-fraud prevention</strong>: it blocks unverified apps that request <strong style="color:var(--text)">SMS or Phone permissions</strong>. It reads the app's <em>permission declarations + developer registration</em> — not the code. That's why rebuilding or re-signing never removed it, and why registered apps install silently.</p>
+    <div class="warn">
+      <p><strong>So v1.5.0 ships two apps:</strong></p>
+      <p style="margin-top:8px">🟢 <strong>OpenCall Bridge</strong> (<code>app.opencall.bridge</code>) — internet calling with your microphone. <strong>Zero SMS/Phone permissions → installs with NO warning.</strong> Use this to call from the web app through your phone's mic &amp; speaker.</p>
+      <p style="margin-top:6px">🟡 <strong>OpenCall Gateway</strong> (<code>app.opencall.gateway2</code>) — full SIM power: SMS relay in/out, dial/answer cellular calls. The warning still appears for this one <em>until you register the app</em> — see the permanent fix below.</p>
     </div>
-    <div class="warn" style="margin-top:14px">
-      <p><strong>Which message do you see? The wording decides the fix:</strong></p>
-      <p style="margin-top:8px">• <strong>"Blocked for your protection" + an "Install anyway" button</strong> → tap More details → Install anyway. This is the normal developer-verification prompt for unregistered developers; it is one tap and done.</p>
-      <p style="margin-top:6px">• <strong>"Blocked for your protection" with NO button at all</strong> (only Cancel/Delete) → the app got a malware-class verdict. Do the Play Store/Play services cache-clear above, restart, try once. If it persists on this fresh identity, report it via Play Protect's "report a false positive" link on the dialog.</p>
-      <p style="margin-top:6px">• <strong>"For your security, your phone isn't allowed to install unknown apps"</strong> → not Play Protect at all; allow your browser under Settings → Apps → Special access → Install unknown apps.</p>
-      <p style="margin-top:6px">• <strong>"App not installed"</strong> → you uninstalled nothing first, or the download was truncated. Re-download and retry.</p>
+  </div>
+
+  <div class="sec">
+    <h3>✅ Permanent fix — free app registration (~15 min, no gov ID)</h3>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><p>On your computer open <strong>android.google.com/developerconsole</strong> → sign in with your Google account (enable <strong>2-Step Verification</strong> first if asked).</p></div>
+      <div class="step"><div class="n">2</div><p>Choose <strong>“Limited distribution”</strong> — free, no fee, no government ID, up to 20 devices. You'll need a Google payments profile (for your legal name/address — nothing is charged).</p></div>
+      <div class="step"><div class="n">3</div><p><strong>Register package name</strong> <code>app.opencall.gateway2</code> and add the signing-key SHA-256 fingerprint:<br><code style="font-size:.75rem;word-break:break-all">03:3C:51:17:75:9D:2A:B2:2B:8C:A6:16:56:76:5B:2D:F1:9B:9D:73:A1:CB:F0:C7:63:A3:F1:76:0E:6B:27:57</code></p></div>
+      <div class="step"><div class="n">4</div><p>On the <strong>Devices</strong> page add your phone: generate the request on the console, scan the QR / open the link <em>on the phone</em>, confirm the developer name, and enter the authorization code it produces.</p></div>
+      <div class="step"><div class="n">5</div><p>Install <strong>opencall-gateway.apk</strong> → no warning anymore — on this build and every future update (same key + registered package).</p></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>🚀 Install in 4 steps</h3>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><p>Download the APK on your Android 8.0+ phone (links above — pick Bridge for zero warnings, Gateway for full SIM features).</p></div>
+      <div class="step"><div class="n">2</div><p>Open it. If the sensitive-data dialog appears on <strong>Gateway</strong>: tap <strong>More details → Install anyway</strong> (or register first, per the section above). <strong>Bridge never shows it.</strong></p></div>
+      <div class="step"><div class="n">3</div><p>In the web app open the <strong>Devices</strong> tab → <strong>Create pairing code</strong> → type the 6 digits into the app → <strong>Pair</strong>.</p></div>
+      <div class="step"><div class="n">4</div><p>Tap <strong>Start gateway</strong> (Gateway) or <strong>Start bridge</strong> (Bridge). The status screen shows the exact version + package name — useful for verification.</p></div>
     </div>
     <div class="ok" style="margin-top:14px">
-      <p><strong>To check what's actually installed:</strong> open the Gateway app — it shows its exact version and package name on the status screen (v1.4.0 · app.opencall.gateway2). Screenshot it if you need to report an issue.</p>
+      <p><strong>No APK at all?</strong> The <a href="app.html" style="color:var(--mint400)">web app</a> installs as a PWA (Chrome → ⋮ → Install / “Add to Home screen”) with zero Play Protect involvement — full internet calling, no SIM relay.</p>
     </div>
   </div>
 

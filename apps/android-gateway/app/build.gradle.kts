@@ -8,23 +8,45 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        // v1.4.0 IDENTITY RESET: new applicationId + fresh signing key.
-        // Play Protect attaches its "Blocked for your protection" verdict to the
-        // app's (packageName, signing key) pair; the previous identity had been
-        // flagged in an early build and every later build inherited the block.
-        // A new package name + new key = a brand-new identity Google has never
-        // flagged. Old app installs coexist; uninstall the old one manually.
         applicationId = "app.opencall.gateway2"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4.0"
+        versionCode = 6
+        versionName = "1.5.0"
         resourceConfigurations += listOf("en")
+    }
+
+    // v1.5.0 — TWO FLAVORS:
+    //
+    //  "full"  → opencall-gateway.apk   (package app.opencall.gateway2)
+    //    Complete SIM gateway: SMS relay, dial/answer, audio bridge.
+    //    Declares the SMS + PHONE permission groups, so Google's
+    //    financial-fraud prevention may show its pre-install warning
+    //    until the developer identity is registered. Register the app
+    //    (limited-distribution account) and this installs clean forever.
+    //
+    //  "lite"  → opencall-bridge.apk    (package app.opencall.bridge)
+    //    Internet-calling companion: mic + notifications only — ZERO
+    //    sensitive permissions, so Play Protect's fraud scan has nothing
+    //    to flag and it installs like a game. No SMS / no call control.
+    //
+    // Both flavors share ONE signing key (updates always install cleanly).
+    flavorDimensions += "mode"
+    productFlavors {
+        create("full") {
+            dimension = "mode"
+            applicationId = "app.opencall.gateway2"
+            versionNameSuffix = "-full"
+        }
+        create("lite") {
+            dimension = "mode"
+            applicationId = "app.opencall.bridge"
+            versionNameSuffix = "-lite"
+        }
     }
 
     // Consistent release signing: every build uses the SAME committed keystore,
     // so updates install over previous versions without signature conflicts.
-    // This is what stops Play Protect flagging / "app not installed" errors.
     signingConfigs {
         create("release") {
             storeFile = rootProject.file("keystore/opencall-gateway-release.keystore")
@@ -36,8 +58,6 @@ android {
 
     buildTypes {
         debug {
-            // Debug builds also use the SAME key so a debug→release transition
-            // (and any future debug build) never produces a signature mismatch.
             signingConfig = signingConfigs.getByName("release")
         }
         release {
@@ -56,6 +76,20 @@ android {
         }
     }
     buildFeatures { buildConfig = true }
+
+    // LITE flavor compiles only the shared files (Rpc, DeviceStore, WebRtcBridge,
+    // MainActivity/BridgeActivity, BridgeService). SIM-gateway-only classes are
+    // kept in src/full/java so the lite APK physically contains no SMS/call code.
+    sourceSets {
+        getByName("full") {
+            java.srcDirs("src/full/java", "src/main/java")
+        }
+        getByName("lite") {
+            java.srcDirs("src/lite/java", "src/main/java")
+            // main/java holds shared files only — see layout below.
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

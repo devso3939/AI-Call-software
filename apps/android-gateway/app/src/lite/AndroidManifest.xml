@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ============================================================================
+     LITE flavor manifest — "OpenCall Bridge" (app.opencall.bridge)
+
+     This variant carries ZERO sensitive permissions:
+       * no SMS group        (no SEND_SMS / RECEIVE_SMS / READ_SMS)
+       * no PHONE group      (no CALL_PHONE / ANSWER_PHONE_CALLS / READ_PHONE_STATE)
+     Only RECORD_AUDIO + notifications — the same permission profile as a
+     voice-recorder or game-chat app. Google Play Protect's financial-fraud
+     pre-install scan triggers on SMS/PHONE/accessibility declarations from
+     unregistered developers; with this manifest there is nothing to trigger
+     on, so the APK installs like any ordinary app.
+     All SIM-gateway classes (GatewayService, SmsReceiver, CallControl, …)
+     are excluded from this flavor by the sourceSets rule in build.gradle.kts.
+     ============================================================================ -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- RECORD_AUDIO is a runtime ("dangerous") permission but NOT one of the
+         categories Play Protect's pre-install fraud scan blocks on — video
+         games and voice-chat apps declare it freely. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.OpenCall"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Headless bridge service: answers the browser's WebRTC offer and
+             streams microphone audio. No telecom integration. -->
+        <service
+            android:name=".BridgeService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+    </application>
+
+</manifest>

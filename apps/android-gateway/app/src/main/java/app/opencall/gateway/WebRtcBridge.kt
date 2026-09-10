@@ -241,8 +241,8 @@ class WebRtcBridge(
                 override fun onSetFailure(p0: String?) { Log.e(TAG, "setLocal: $p0") }
             }, answerConstraints)
 
-            // speaker ON as soon as we start bridging (acoustic path to the SIM call)
-            CallControl.speakerOn(ctx)
+            // speaker ON as soon as we start bridging (acoustic path to the call)
+            AudioRoute.speakerOn(ctx)
         } catch (e: Exception) {
             Log.e(TAG, "onOffer failed", e)
         }
@@ -266,7 +266,7 @@ class WebRtcBridge(
             conn.setRemoteDescription(SdpObserverLog("setRemote(answer)"),
                 SessionDescription(SessionDescription.Type.fromCanonicalForm(type), sdp))
             Log.i(TAG, "remote answer applied")
-            CallControl.speakerOn(ctx)
+            AudioRoute.speakerOn(ctx)
         } catch (e: Exception) {
             Log.e(TAG, "onAnswer failed", e)
         }
@@ -320,7 +320,7 @@ class WebRtcBridge(
         callId?.let { DeviceStore.saveSigSeq(ctx, it, sigSeq) }
         callId = null
         pollThread = null
-        CallControl.speakerOff(ctx)
+        AudioRoute.speakerOff(ctx)
         Log.i(TAG, "bridge closed")
     }
 

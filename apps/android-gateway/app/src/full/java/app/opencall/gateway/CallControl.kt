@@ -98,24 +98,10 @@ object CallControl {
         }
     }
 
-    /** Put the cellular call on speakerphone so the WebRTC bridge can hear it. */
-    fun speakerOn(ctx: Context) {
-        try {
-            val am = ctx.getSystemService(AudioManager::class.java) ?: return
-            am.mode = AudioManager.MODE_IN_CALL
-            am.isSpeakerphoneOn = true
-            am.isMicrophoneMute = false
-            Log.i(TAG, "speaker ON")
-        } catch (e: Exception) { Log.e(TAG, "speakerOn failed", e) }
-    }
+    /** Speaker routing lives in the shared AudioRoute object (used by both flavors). */
+    fun speakerOn(ctx: Context) = AudioRoute.speakerOn(ctx)
 
-    fun speakerOff(ctx: Context) {
-        try {
-            val am = ctx.getSystemService(AudioManager::class.java) ?: return
-            am.isSpeakerphoneOn = false
-            am.mode = AudioManager.MODE_NORMAL
-        } catch (e: Exception) { /* fine */ }
-    }
+    fun speakerOff(ctx: Context) = AudioRoute.speakerOff(ctx)
 }
 
 /**
