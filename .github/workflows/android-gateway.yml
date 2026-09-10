@@ -76,19 +76,12 @@ jobs:
       #   https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-bridge.apk
       - name: Rename APKs to stable filenames
         run: |
-          cd app/build/outputs/apk/full/release
-          for f in *.apk; do
-            [ -e "$f" ] || continue
-            case "$f" in opencall-gateway.apk) continue;; esac
-            cp "$f" opencall-gateway.apk
-          done
-          cd ../../lite/release
-          for f in *.apk; do
-            [ -e "$f" ] || continue
-            case "$f" in opencall-bridge.apk) continue;; esac
-            cp "$f" opencall-bridge.apk
-          done
-          ls -la ../full/release ../lite/release
+          cd app/build/outputs/apk
+          FULL_APK=$(ls full/release/*.apk | grep -v opencall-gateway.apk | head -n 1)
+          LITE_APK=$(ls lite/release/*.apk | grep -v opencall-bridge.apk | head -n 1)
+          cp "$FULL_APK" full/release/opencall-gateway.apk
+          cp "$LITE_APK" lite/release/opencall-bridge.apk
+          ls -la full/release lite/release
 
       # Rolling "latest" release: every build REPLACES the single latest release,
       # so the URLs above ALWAYS serve the newest signed APKs.
