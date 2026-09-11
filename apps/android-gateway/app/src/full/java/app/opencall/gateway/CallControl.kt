@@ -220,11 +220,22 @@ object CallControl {
         // 1.5.8: AudioRoute.speakerOn sets the shared bridgeWantsSpeaker flag
         // (single source of truth), so the InCallService re-assert engages
         // no matter who requested the speaker.
+        // 1.5.12: when the bridge is in BLUETOOTH mode this transparently
+        // routes to the paired hands-free device instead (see AudioRoute).
         AudioRoute.speakerOn(ctx)
     }
 
     fun speakerOff(ctx: Context) {
         AudioRoute.speakerOff(ctx)
+    }
+
+    /**
+     * 1.5.12 — send the active cellular call's audio to the paired Bluetooth
+     * hands-free device. The computer running the web app is the headset:
+     * its mic + speakers carry the call, the phone only forwards audio.
+     */
+    fun routeBluetooth(ctx: Context) {
+        AudioRoute.routeBluetooth(ctx)
     }
 
     /** True when a cellular call is currently ringing on this device. */

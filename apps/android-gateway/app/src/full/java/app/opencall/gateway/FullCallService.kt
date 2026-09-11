@@ -109,6 +109,20 @@ class FullCallService : InCallService() {
         } catch (_: Throwable) { false }
 
         /**
+         * 1.5.12 — the supported Bluetooth hands-free entry point. The
+         * computer running the web app is the paired hands-free unit; this
+         * pins the cellular call's audio to it so mic + speaker live on the
+         * computer. Same reflection contract as setSpeakerRoute (AudioRoute
+         * calls this from shared src/main code): @JvmStatic + Boolean return.
+         */
+        @JvmStatic
+        fun setBluetoothRoute(): Boolean = try {
+            val svc = instance ?: return false
+            svc.setAudioRoute(CallAudioState.ROUTE_BLUETOOTH)
+            true
+        } catch (_: Throwable) { false }
+
+        /**
          * 1.5.7 — fire-and-forget "go home". Used by the ICS itself and by
          * GatewayService as a best-effort fallback when the ICS is not
          * bound (background activity launch may be blocked on Android 10+
@@ -191,21 +205,37 @@ class FullCallService : InCallService() {
             // 1.5.10 — last call gone: the phone is the user's again
             CallMask.hide(this)
             // restore normal audio mode
+            // 1.5.12: drop the Bluetooth mode mirror too, and if a SCO link
+            // was forced open (no-ICS fallback) close it again.
+            AudioRoute.mode = AudioRoute.Mode.SPEAKER
+            try {
+                val am = getSystemService(android.media.AudioManager::class.java)
+                am?.isBluetoothScoOn = false
+                am?.stopBluetoothSco()
+            } catch (_: Exception) {}
             try { setAudioRoute(CallAudioState.ROUTE_SPEAKER or CallAudioState.ROUTE_EARPIECE) } catch (_: Exception) {}
         }
     }
 
     override fun onCallAudioStateChanged(audioState: CallAudioState?) {
         super.onCallAudioStateChanged(audioState)
-        // The dialer may flip the route back to earpiece — re-assert speaker
-        // while the acoustic bridge is supposed to be listening.
+        // The dialer may flip the route back to earpiece — re-assert the
+        // bridged route while the bridge is supposed to be listening.
         // 1.5.8: read AudioRoute's flag (set by EVERY speakerOn caller,
         // including WebRtcBridge's auto-bridge path) instead of only
         // CallControl's (set only by explicit web-app speaker commands) —
         // this is what makes the safety net engage on normal calls.
-        if (AudioRoute.bridgeWantsSpeaker && audioState != null &&
-            (audioState.route and CallAudioState.ROUTE_SPEAKER) == 0) {
-            try { setAudioRoute(CallAudioState.ROUTE_SPEAKER); Log.i(TAG, "re-asserted speaker route") } catch (_: Exception) {}
+        // 1.5.12: in BLUETOOTH mode pin ROUTE_BLUETOOTH instead of the
+        // speaker so telecom flips back to earpiece can't yank the call
+        // away from the paired computer.
+        if (AudioRoute.bridgeWantsSpeaker && audioState != null) {
+            if (AudioRoute.mode == AudioRoute.Mode.BLUETOOTH) {
+                if (audioState.route != CallAudioState.ROUTE_BLUETOOTH) {
+                    try { setAudioRoute(CallAudioState.ROUTE_BLUETOOTH); Log.i(TAG, "re-asserted BLUETOOTH route") } catch (_: Exception) {}
+                }
+            } else if ((audioState.route and CallAudioState.ROUTE_SPEAKER) == 0) {
+                try { setAudioRoute(CallAudioState.ROUTE_SPEAKER); Log.i(TAG, "re-asserted speaker route") } catch (_: Exception) {}
+            }
         }
     }
 

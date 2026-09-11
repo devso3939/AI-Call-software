@@ -43,7 +43,24 @@ object AudioRoute {
 
     private const val TAG = "OpenCall/Audio"
 
-    /** Mirrors CallControl.bridgeWantsSpeaker (full flavor) so the InCallService re-assert engages. */
+    /**
+     * 1.5.12 — where the bridged call's audio comes out of the phone:
+     *
+     *  SPEAKER   — acoustic bridge (loudspeaker → mic), the 1.5.7+ path.
+     *  BLUETOOTH — the call's audio streams to the paired computer acting as
+     *              a Bluetooth hands-free unit; mic + speaker live on the
+     *              computer (web-app side). The phone only forwards audio.
+     */
+    enum class Mode { SPEAKER, BLUETOOTH }
+
+    /** Active routing mode — BLUETOOTH only while a BT-hands-free call runs. */
+    @Volatile var mode: Mode = Mode.SPEAKER
+
+    /**
+     * True while a bridge is engaged in EITHER mode, so the InCallService
+     * re-assert safety net (FullCallService.onCallAudioStateChanged /
+     * onStateChanged) keeps the chosen route pinned against telecom flips.
+     */
     @Volatile var bridgeWantsSpeaker: Boolean = false
 
     /**
@@ -82,6 +99,7 @@ object AudioRoute {
 
     /** Speaker ON so the WebRTC bridge can hear the call audio. */
     fun speakerOn(ctx: Context) {
+        if (mode == Mode.BLUETOOTH) { routeBluetooth(ctx); return }
         bridgeWantsSpeaker = true
         try {
             val a = am(ctx) ?: return
@@ -103,13 +121,45 @@ object AudioRoute {
         } catch (e: Exception) { Log.e(TAG, "speakerOn failed", e) }
     }
 
+    /**
+     * 1.5.12 — route the cellular call's audio to the paired Bluetooth
+     * hands-free device. The computer running the web app acts as the
+     * headset: ITS microphone is the call mic, ITS speakers play the far
+     * end. The phone keeps the radio and forwards audio only.
+     *
+     * Shared `bridgeWantsSpeaker` stays the "bridge is live" signal for the
+     * InCallService safety net; `mode` tells that net WHICH route to pin.
+     * Acoustic bridge specifics (raise volume) are NOT wanted here — the
+     * loudspeaker path is inactive.
+     */
+    fun routeBluetooth(ctx: Context) {
+        bridgeWantsSpeaker = true
+        mode = Mode.BLUETOOTH
+        try {
+            val a = am(ctx) ?: return
+            a.isMicrophoneMute = false
+            tryInCallBluetooth()
+            if (!inCallRouteApplied) {
+                // No ICS binding (lite flavor): AudioManager lever. On most
+                // builds this selects the paired SCO headset; startBluetoothSco
+                // nudges the SCO link open on older ones.
+                try { a.startBluetoothSco() } catch (_: Throwable) {}
+                a.isBluetoothScoOn = true
+            }
+            Log.i(TAG, "route → BLUETOOTH (inCallRouteApplied=$inCallRouteApplied)")
+        } catch (e: Exception) { Log.e(TAG, "routeBluetooth failed", e) }
+    }
+
     fun speakerOff(ctx: Context) {
         bridgeWantsSpeaker = false
+        mode = Mode.SPEAKER
         try {
             tryInCallSpeaker(false)
             if (!inCallRouteApplied) {
                 val a = am(ctx) ?: return
                 a.isSpeakerphoneOn = false
+                a.isBluetoothScoOn = false
+                try { a.stopBluetoothSco() } catch (_: Throwable) {}
                 a.mode = AudioManager.MODE_NORMAL
             }
             // 1.5.10: give the phone its volume back
@@ -140,6 +190,21 @@ object AudioRoute {
     }
 
     /**
+     * 1.5.12 — telecom-level Bluetooth route, same reflection pattern as
+     * tryInCallSpeaker: the class lives in src/full only, so lite builds
+     * resolve it to a harmless no-op (false → AudioManager fallback above).
+     */
+    private fun tryInCallBluetooth() {
+        inCallRouteApplied = try {
+            val cls = Class.forName("app.opencall.gateway.FullCallService")
+            val m = cls.getMethod("setBluetoothRoute")
+            m.invoke(null) as? Boolean ?: false
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
      * 1.5.8 — complete re-assertion pass, safe to call repeatedly: the
      * telecom path (when bound) AND the AudioManager fallback together.
      * Used by the delayed re-asserts after the call goes ACTIVE, because a
@@ -152,6 +217,17 @@ object AudioRoute {
             val a = am(ctx) ?: return
             a.mode = AudioManager.MODE_IN_CALL
             a.isMicrophoneMute = false
+            if (mode == Mode.BLUETOOTH) {
+                // 1.5.12 — pin the Bluetooth hands-free route instead of the
+                // loudspeaker; no volume raise (the loudspeaker is not in play).
+                tryInCallBluetooth()
+                if (!inCallRouteApplied) {
+                    a.isBluetoothScoOn = true
+                    try { a.startBluetoothSco() } catch (_: Throwable) {}
+                }
+                Log.i(TAG, "BLUETOOTH re-asserted (inCallRouteApplied=$inCallRouteApplied)")
+                return
+            }
             // 1.5.10: keep the bridge loud — OEM stacks sometimes reset the
             // stream volume mid-call along with the route.
             raiseVoiceVolume(ctx)

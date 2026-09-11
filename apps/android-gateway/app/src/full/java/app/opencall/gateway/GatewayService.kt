@@ -59,6 +59,11 @@ class GatewayService : Service() {
     override fun onCreate() {
         super.onCreate()
         prefs = getSharedPreferences("gw", Context.MODE_PRIVATE)
+        // 1.5.12 — a service restart mid-session would otherwise silently
+        // strand the route in BLUETOOTH mode. Bridge sessions are web-side
+        // lifecycle events, so every fresh service start begins acoustic.
+        AudioRoute.mode = AudioRoute.Mode.SPEAKER
+        prefs.edit().putBoolean("hfpMode", false).apply()
         val nm = getSystemService(NotificationManager::class.java)
         val ch = NotificationChannel(CHANNEL_ID, "OpenCall Gateway", NotificationManager.IMPORTANCE_LOW)
         ch.description = "Keeps the SIM gateway connected"
@@ -221,7 +226,14 @@ class GatewayService : Service() {
                             }.start()
                             // open the audio bridge NOW so the browser's offer is
                             // answered the moment it lands
-                            ensureBridge().joinAndAnswer(room, callId)
+                            // 1.5.12: Bluetooth hands-free mode carries the
+                            // audio over the paired computer instead — no
+                            // WebRTC bridge for this call.
+                            if (AudioRoute.mode == AudioRoute.Mode.BLUETOOTH) {
+                                Log.i(TAG, "dial_call: BLUETOOTH hands-free mode — WebRTC bridge skipped")
+                            } else {
+                                ensureBridge().joinAndAnswer(room, callId)
+                            }
                         } else {
                             // 1.5.6: honest failure — without this the web call
                             // panel stays "dialing" until its timeout.
@@ -245,8 +257,14 @@ class GatewayService : Service() {
                         // INBOUND bridge: phone is the OFFERER — browser's
                         // startMedia('callee') waits for our offer in calls_events.
                         // joinAndAnswer here would deadlock (both sides waiting).
+                        // 1.5.12: Bluetooth hands-free mode carries the audio
+                        // over the paired computer instead — no WebRTC bridge.
                         val room = prefs.getString("bridgeRoom", "") ?: ""
-                        ensureBridge().joinAndOffer(room, callId)
+                        if (AudioRoute.mode == AudioRoute.Mode.BLUETOOTH) {
+                            Log.i(TAG, "answer_call: BLUETOOTH hands-free mode — WebRTC bridge skipped")
+                        } else {
+                            ensureBridge().joinAndOffer(room, callId)
+                        }
                     }
                 }
 
@@ -257,6 +275,8 @@ class GatewayService : Service() {
                         .put("p_device_id", devId).put("p_secret", secret)
                         .put("p_call_id", callId).put("p_state", "ended"))
                     bridge?.close()
+                    // 1.5.12: the Bluetooth hands-free session ends with the call
+                    prefs.edit().putBoolean("hfpMode", false).apply()
                 }
 
                 // ── 1.5.5 web-app call controls (in-call mute / speaker) ──
@@ -283,20 +303,38 @@ class GatewayService : Service() {
                 }
 
                 "speaker_on" -> {
-                    CallControl.speakerOn(this)
-                    ok = true
-                    result = JSONObject().put("speaker", true)
+                    // 1.5.12 — the web app requests the call audio on the
+                    // paired computer (Bluetooth hands-free) with payload
+                    // { route: "bluetooth" }. Commands without the payload
+                    // behave exactly as in 1.5.11 (acoustic speaker bridge).
+                    if (cmd.payload.optString("route") == "bluetooth") {
+                        CallControl.routeBluetooth(this)
+                        prefs.edit().putBoolean("hfpMode", true).apply()
+                        ok = true
+                        result = JSONObject().put("speaker", true).put("route", "bluetooth")
+                    } else {
+                        CallControl.speakerOn(this)
+                        prefs.edit().putBoolean("hfpMode", false).apply()
+                        ok = true
+                        result = JSONObject().put("speaker", true)
+                    }
                 }
 
                 "speaker_off" -> {
                     CallControl.speakerOff(this)
+                    prefs.edit().putBoolean("hfpMode", false).apply()
                     ok = true
                     result = JSONObject().put("speaker", false)
                 }
 
                 "toggle_speaker" -> {
-                    val now = !CallControl.bridgeWantsSpeaker
+                    // 1.5.12: in Bluetooth hands-free mode a legacy toggle
+                    // returns the call to the acoustic bridge (the web app's
+                    // route button uses explicit speaker_on / speaker_off).
+                    val wasBt = AudioRoute.mode == AudioRoute.Mode.BLUETOOTH
+                    val now = if (wasBt) false else !CallControl.bridgeWantsSpeaker
                     if (now) CallControl.speakerOn(this) else CallControl.speakerOff(this)
+                    prefs.edit().putBoolean("hfpMode", false).apply()
                     ok = true
                     result = JSONObject().put("speaker", now)
                 }
@@ -334,6 +372,9 @@ class GatewayService : Service() {
                         .put("active", FullCallService.active)
                         .put("ringing", FullCallService.ringing)
                         .put("agentMode", FullCallService.autoAnswerInbound)
+                        // 1.5.12: audioRoute lets the web app confirm the
+                        // Bluetooth hands-free mode actually engaged.
+                        .put("audioRoute", if (AudioRoute.mode == AudioRoute.Mode.BLUETOOTH) "bluetooth" else "speaker")
                 }
 
                 "ping" -> { ok = true }
