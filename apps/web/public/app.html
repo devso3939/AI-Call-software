@@ -1057,6 +1057,7 @@ async function answerWithBridge() {
   renderApp();
   startEventPoll();
   await startMedia('callee');   // the phone (bridge mode) sends the WebRTC offer
+}
 
 /* join the audio bridge later, from the onphone banner */
 async function joinBridge() {
