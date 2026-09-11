@@ -260,25 +260,26 @@ class GatewayService : Service() {
                 }
 
                 // ── 1.5.5 web-app call controls (in-call mute / speaker) ──
+                // 1.5.10: setMuted returns a JSON object { muted, path } so the
+                // web UI can show exactly which mute path applied (telecom vs
+                // bridge-track). "Mute phone" silences the phone's microphone
+                // contribution — it NEVER touches the browser user's voice.
                 "mute_call" -> {
                     val st = CallControl.setMuted(this, true)
                     ok = st != null
-                    result = if (st == null) JSONObject().put("error", "no active call")
-                             else JSONObject().put("muted", true)
+                    result = st ?: JSONObject().put("error", "no active call")
                 }
 
                 "unmute_call" -> {
                     val st = CallControl.setMuted(this, false)
                     ok = st != null
-                    result = if (st == null) JSONObject().put("error", "no active call")
-                             else JSONObject().put("muted", false)
+                    result = st ?: JSONObject().put("error", "no active call")
                 }
 
                 "toggle_mute" -> {
                     val st = CallControl.toggleMute(this)
                     ok = st != null
-                    result = if (st == null) JSONObject().put("error", "no active call")
-                             else JSONObject().put("muted", st)
+                    result = st ?: JSONObject().put("error", "no active call")
                 }
 
                 "speaker_on" -> {

@@ -46,13 +46,50 @@ object AudioRoute {
     /** Mirrors CallControl.bridgeWantsSpeaker (full flavor) so the InCallService re-assert engages. */
     @Volatile var bridgeWantsSpeaker: Boolean = false
 
+    /**
+     * 1.5.10 — the phone's in-call (STREAM_VOICE_CALL) volume is the volume
+     * the BROWSER USER'S voice plays at through the loudspeaker. If the user
+     * keeps their phone at 30% in-call volume, the laptop user is inaudible
+     * to the cellular far end even though everything else works — and it
+     * looks like "the laptop microphone doesn't reach the call". During a
+     * bridged call we raise the stream to max (saving the user's value) and
+     * restore it when the bridge closes.
+     */
+    @Volatile private var savedVoiceVolume: Int? = null
+
+    private fun am(ctx: Context): AudioManager? =
+        ctx.getSystemService(AudioManager::class.java)
+
+    private fun raiseVoiceVolume(ctx: Context) {
+        val a = am(ctx) ?: return
+        try {
+            if (savedVoiceVolume == null) savedVoiceVolume = a.getStreamVolume(AudioManager.STREAM_VOICE_CALL)
+            val max = a.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
+            if (a.getStreamVolume(AudioManager.STREAM_VOICE_CALL) < max) {
+                a.setStreamVolume(AudioManager.STREAM_VOICE_CALL, max, 0)
+                Log.i(TAG, "voice-call volume → max (was ${savedVoiceVolume})")
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun restoreVoiceVolume(ctx: Context) {
+        val v = savedVoiceVolume ?: return
+        savedVoiceVolume = null
+        try {
+            am(ctx)?.setStreamVolume(AudioManager.STREAM_VOICE_CALL, v, 0)
+        } catch (_: Exception) {}
+    }
+
     /** Speaker ON so the WebRTC bridge can hear the call audio. */
     fun speakerOn(ctx: Context) {
         bridgeWantsSpeaker = true
         try {
-            val am = ctx.getSystemService(AudioManager::class.java) ?: return
-            am.mode = AudioManager.MODE_IN_CALL
-            am.isMicrophoneMute = false
+            val a = am(ctx) ?: return
+            a.mode = AudioManager.MODE_IN_CALL
+            a.isMicrophoneMute = false
+            // 1.5.10: the bridge is acoustic — the loudspeaker has to be loud
+            // enough for the mic to pick the browser user's voice up.
+            raiseVoiceVolume(ctx)
             // 1.5.7: prefer the telecom-controlled route when we can. This is
             // the ONLY route that reliably sticks on API 34+ where telephony
             // owns the audio session.
@@ -60,7 +97,7 @@ object AudioRoute {
             if (!inCallRouteApplied) {
                 // No InCallService binding (lite flavor or pre-grant) →
                 // AudioManager is the only lever we have.
-                am.isSpeakerphoneOn = true
+                a.isSpeakerphoneOn = true
             }
             Log.i(TAG, "speaker ON (inCallRouteApplied=$inCallRouteApplied)")
         } catch (e: Exception) { Log.e(TAG, "speakerOn failed", e) }
@@ -71,10 +108,12 @@ object AudioRoute {
         try {
             tryInCallSpeaker(false)
             if (!inCallRouteApplied) {
-                val am = ctx.getSystemService(AudioManager::class.java) ?: return
-                am.isSpeakerphoneOn = false
-                am.mode = AudioManager.MODE_NORMAL
+                val a = am(ctx) ?: return
+                a.isSpeakerphoneOn = false
+                a.mode = AudioManager.MODE_NORMAL
             }
+            // 1.5.10: give the phone its volume back
+            restoreVoiceVolume(ctx)
         } catch (e: Exception) { /* fine */ }
     }
 
@@ -110,11 +149,14 @@ object AudioRoute {
     fun reassertSpeaker(ctx: Context) {
         if (!bridgeWantsSpeaker) return
         try {
-            val am = ctx.getSystemService(AudioManager::class.java) ?: return
-            am.mode = AudioManager.MODE_IN_CALL
-            am.isMicrophoneMute = false
+            val a = am(ctx) ?: return
+            a.mode = AudioManager.MODE_IN_CALL
+            a.isMicrophoneMute = false
+            // 1.5.10: keep the bridge loud — OEM stacks sometimes reset the
+            // stream volume mid-call along with the route.
+            raiseVoiceVolume(ctx)
             tryInCallSpeaker(true)
-            if (!inCallRouteApplied) am.isSpeakerphoneOn = true
+            if (!inCallRouteApplied) a.isSpeakerphoneOn = true
             Log.i(TAG, "speaker re-asserted (inCallRouteApplied=$inCallRouteApplied)")
         } catch (_: Exception) {}
     }

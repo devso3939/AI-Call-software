@@ -153,39 +153,49 @@ object CallControl {
     // ─────────── web-app call controls (routed via gateway_commands) ───────────
 
     /**
-     * The API 34+ mute entry point is InCallService.setMuted(Boolean) (via
-     * FullCallService.instance). On older builds we fall back to the WebRTC
-     * bridge's mic track + AudioManager mute — either way the far end stops
-     * hearing the phone.
+     * MUTE DIRECTIONS (1.5.10) — two different mutes, two different goals:
+     *
+     *  • MUTE ME (web side): the browser mutes its own mic track. Nothing
+     *    leaves the laptop → nothing reaches the cellular far end. This is
+     *    the primary mute and needs NO phone command at all.
+     *
+     *  • MUTE PHONE MIC (secondary): silences the phone's own mic so room
+     *    noise around the phone can't leak into the call. Implementation:
+     *      - API 34+: InCallService.setMuted — the real telecom mute.
+     *      - API <34: WebRtcBridge.setBridgeMicMuted ONLY. That track is the
+     *        phone's contribution to the bridge. CRITICAL: we must NOT touch
+     *        AudioManager.isMicrophoneMute — the phone mic is what carries
+     *        the BROWSER USER'S VOICE acoustically into the cellular call
+     *        (laptop speaker → phone mic → network). Hardware-muting it
+     *        would make the web user silent to the far end. (Bug in ≤1.5.9:
+     *        "Mute phone" muted the laptop user's voice instead.)
+     *
+     *  The returned JSON records which path applied so the web UI can be
+     *  honest about what happened.
      */
 
-    /** Toggle mute on the active cellular call. Returns new state or null. */
-    fun toggleMute(ctx: Context): Boolean? = setMuted(ctx, !FullCallService.micMuted)
+    /** Toggle mute on the active cellular call. Returns {muted, path} or null. */
+    fun toggleMute(ctx: Context): JSONObject? = setMuted(ctx, !FullCallService.micMuted)
 
-    /** Mute explicitly. Returns the requested state, or null when no call live. */
-    fun setMuted(ctx: Context, muted: Boolean): Boolean? {
+    /** Mute explicitly. Returns {muted, path} JSON, or null when no call live. */
+    fun setMuted(ctx: Context, muted: Boolean): JSONObject? {
         return try {
             val hasLiveCall = FullCallService.calls.any {
                 FullCallService.stateLabel(it) == "active" || FullCallService.stateLabel(it) == "holding"
             }
             if (!hasLiveCall) return null
-            var applied = false
+            var path = "bridge"
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 // API 34+: the mute entry point lives on the InCallService, not
                 // the Call object. Requires the phone to have default-dialer
                 // privileges on some OEM builds; bridge-mic fallback covers the rest.
-                try { FullCallService.instance?.setMuted(muted); applied = true } catch (_: Exception) {}
+                try { FullCallService.instance?.setMuted(muted); path = "telecom" } catch (_: Exception) {}
             }
-            if (!applied) {
-                // API < 34: mute the BRIDGE mic — the WebRTC track is what carries
-                // our voice to the browser and onward acoustically into the call.
-                WebRtcBridge.setBridgeMicMuted(muted)
-                try {
-                    ctx.getSystemService(AudioManager::class.java)?.isMicrophoneMute = muted
-                } catch (_: Exception) {}
-            }
+            // API < 34 (or telecom failed): mute ONLY the bridge's mic track —
+            // never the hardware mic (see the mute-directions note above).
+            if (path != "telecom") WebRtcBridge.setBridgeMicMuted(muted)
             FullCallService.micMuted = muted
-            muted
+            JSONObject().put("muted", muted).put("path", path)
         } catch (e: Exception) { null }
     }
 

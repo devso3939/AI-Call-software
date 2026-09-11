@@ -1063,8 +1063,10 @@ async function gwToggleMute(btn) {
   const id = await gwCmd(want ? 'mute_call' : 'unmute_call');
   if (!id) return;
   gatewayMute = want;
-  if (btn) btn.textContent = want ? 'Unmute phone' : 'Mute phone';
-  showToast(want ? 'Phone mic muted' : 'Phone mic live');
+  if (btn) btn.textContent = want ? 'Unmute phone mic' : 'Mute phone mic';
+  showToast(want
+    ? 'Phone mic muted — room noise around the phone stops leaking into the call'
+    : 'Phone mic live');
 }
 
 async function gwToggleSpeaker(btn) {
@@ -1946,6 +1948,10 @@ function tabDevices() {
         : fl === 'gateway'
           ? '<span class="pill completed">Gateway · automatic dial + SMS</span>'
           : '';
+      // honest copy: calls run from the web; the phone is a SIM radio only
+      const gatewayNote = fl === 'gateway'
+        ? `<div class="tiny" style="color:#a7f3d0;margin-top:4px">✅ Calls run from your browser — the phone dials and bridges audio automatically; a call mask keeps it silent during calls.</div>`
+        : '';
       // STALE-DEVICE FIX: judge liveness by heartbeat freshness, not the raw DB flag
       const isLive = deviceFresh(d, Date.now() - 120000);
       const statePill = isLive
@@ -1960,6 +1966,7 @@ function tabDevices() {
           <strong>${esc(d.name || 'Android phone')}</strong> ${flBadge}
           <div class="tiny mint">${esc(d.sim_number || 'SIM number unknown — set it in the phone app (Bridge: “Save SIM number”)')}</div>
           <div class="tiny">battery ${d.battery != null ? esc(d.battery) + '%' : '—'} · v${esc(d.app_version || '?')} · ${seenNote}</div>
+          ${gatewayNote}
         </div>
         <div class="row">
           ${statePill}
@@ -2198,11 +2205,12 @@ function callPanel() {
     ${recording ? '<span class="callbadge rec">● REC · both voices → mp3 in history</span>' : ''}
     ${gatewayHeld ? '<span class="callbadge hold">⏸ on hold</span>' : ''}
     ${call.isGateway && !gwBridge ? '<span class="callbadge gw">🔊 audio flows to this computer</span>' : ''}
-    ${gwBridge ? `<div class="callhint">🔊 audio passes through your phone's speaker + mic — keep the phone close, other sounds off</div>` : ''}
+    ${gwBridge ? `<div class="callhint">🔊 your voice: this computer's mic → phone's speaker → the call · their voice: the call → phone's mic → this computer — keep the phone nearby, face down</div>` : ''}
     ${call.stateNote ? `<div class="callnote">${esc(call.stateNote)}</div>` : ''}
     <div class="callctrls">
       ${listenOnly && !call.isGateway ? '<button class="btn btn-ghost" onclick="retryMic(this)">Retry mic</button>' : ''}
-      ${canMute ? `<button id="cp-mute" class="btn ${muteState || gatewayMute ? 'btn-danger' : 'btn-ghost'}" onclick="cpMute(this)" title="Mute your microphone">🎤 ${muteState || gatewayMute ? 'Unmute' : 'Mute'}</button>` : ''}
+      ${canMute ? `<button id="cp-mute" class="btn ${muteState ? 'btn-danger' : 'btn-ghost'}" onclick="cpMute(this)" title="${call.isGateway ? 'Mute YOUR microphone — the far end stops hearing you' : 'Mute your microphone'}">🎤 ${muteState ? 'Unmute' : 'Mute'}</button>` : ''}
+      ${call.isGateway && gatewayFlavor !== 'bridge' && gatewayFull ? `<button id="cp-phone" class="btn ${gatewayMute ? 'btn-danger' : 'btn-ghost'}" onclick="cpPhoneMic(this)" title="Silence the phone's own microphone (room noise around the phone)">🎙 ${gatewayMute ? 'Unmute phone mic' : 'Mute phone mic'}</button>` : ''}
       ${call.isGateway && gatewayFlavor !== 'bridge' ? `<button id="cp-spk" class="btn ${gatewaySpeaker ? 'btn-ghost' : 'btn-danger'}" onclick="cpSpeaker(this)" title="Phone loudspeaker">🔊 ${gatewaySpeaker ? 'Speaker off' : 'Speaker on'}</button>` : ''}
       ${gwFull ? `<button id="cp-hold" class="btn ${gatewayHeld ? 'btn-danger' : 'btn-ghost'}" onclick="cpHold(this)" title="Put the call on hold">⏸ ${gatewayHeld ? 'Resume' : 'Hold'}</button>` : ''}
       ${call.isPstn || (call.isGateway && gatewayFlavor !== 'bridge') ? `<button id="cp-pad" class="btn ${dtmfOpen ? 'btn-primary' : 'btn-ghost'}" onclick="toggleDtmf()" title="Dialpad (DTMF)">⌨ Keypad</button>` : ''}
@@ -2218,7 +2226,12 @@ function callPanel() {
 
 /* in-call panel actions */
 function cpMute(btn) {
-  if (call.isGateway) return gwToggleMute(btn);
+  // 1.5.10 — mute = MUTE ME. On gateway calls this mutes the BROWSER mic
+  // (your laptop's voice into the call), exactly like internet/PSTN calls.
+  // Your voice is what the phone picks up and feeds into the cellular call,
+  // so browser-mic mute = the far end stops hearing YOU. It no longer mutes
+  // the phone's mic (that was the 1.5.9 bug — it silenced your own voice).
+  // The phone-mic mute lives on the secondary 🎙️ phone button.
   muteState = !muteState;
   if (call.isPstn) {
     try { if (activeTwilioCall) activeTwilioCall.mute(muteState); } catch {}
@@ -2227,6 +2240,7 @@ function cpMute(btn) {
   }
   renderApp();
 }
+function cpPhoneMic(btn) { return gatewayFull ? gwToggleMute(btn) : showToast('Update the phone app to the latest version for this'); }
 function cpSpeaker(btn) { return gwToggleSpeaker(btn); }
 function cpHold(btn) { return gwToggleHold(btn); }
 let dtmfOpen = false;

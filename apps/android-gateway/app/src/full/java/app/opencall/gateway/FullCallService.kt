@@ -140,6 +140,13 @@ class FullCallService : InCallService() {
         val dir = try { "${call.details.callDirection}" } catch (_: Throwable) { "?" }
         Log.i(TAG, "call added: ${stateLabel(call)} ${safeNumber(call)} dir=$dir")
         pushState(call)
+        // 1.5.10 — stop racing the stock dialer with Home intents: draw a
+        // full-screen overlay ON TOP of it for the whole call. The dialer can
+        // re-launch on every state change all it wants — the user sees the
+        // mask ("call running from your computer"), not the dialer. Home
+        // dismissal below remains as the fallback for phones without the
+        // overlay grant.
+        CallMask.show(this, safeNumber(call))
         // The stock dialer UI always pops when a call is added — push it to
         // the background immediately. Android re-shows it on each state
         // change, so we also dismiss in the callback.
@@ -175,6 +182,8 @@ class FullCallService : InCallService() {
             lastState = "idle"
             reportState("ended", lastNumber)
             inboundCallId = null
+            // 1.5.10 — last call gone: the phone is the user's again
+            CallMask.hide(this)
             // restore normal audio mode
             try { setAudioRoute(CallAudioState.ROUTE_SPEAKER or CallAudioState.ROUTE_EARPIECE) } catch (_: Exception) {}
         }
@@ -202,6 +211,7 @@ class FullCallService : InCallService() {
         ringing = false
         active = false
         lastState = "idle"
+        CallMask.hide(this)
         instance = null
         super.onDestroy()
     }
@@ -330,9 +340,12 @@ class FullCallService : InCallService() {
      * 1.5.7 — silent dialer. The stock dialer re-shows itself right after we
      * go home, and on many devices it launches AFTER onCallAdded fires, so a
      * single dismissal always loses the race and the dialer stays on screen.
-     * Fix: keep dismissing — a 100 ms re-assert loop for ~12 s, restarted by
-     * every state change (dialing → ringing → active), so the whole
-     * call-setup window stays covered. Bounded so it can never spin forever.
+     * Fix: keep dismissing — a 100 ms re-assert loop. 1.5.10 raises coverage
+     * from 12 s to 30 s per state-change window (some carriers take 15 s+
+     * from dialing to active, and the dialer re-pops after we stop), and
+     * every state change restarts the clock anyway. The CallMask overlay is
+     * the primary defense now; this loop is the fallback for phones without
+     * the overlay grant. Bounded so it can never spin forever.
      */
     @Volatile private var suppressGen: Int = 0
 
@@ -341,10 +354,10 @@ class FullCallService : InCallService() {
         Thread {
             var fired = 0
             var alive = true
-            // 120 × 100 ms ≈ 12 s of coverage per state-change window —
-            // enough to cover dialing → ringing → answered on a normal
-            // network, and each state change restarts the clock anyway.
-            while (alive && gen == suppressGen && fired < 120 && calls.isNotEmpty()) {
+            // 300 × 100 ms ≈ 30 s of coverage per state-change window —
+            // covers slow-carrier dialing → ringing → answered, and each
+            // state change restarts the clock anyway.
+            while (alive && gen == suppressGen && fired < 300 && calls.isNotEmpty()) {
                 try { Thread.sleep(100) } catch (_: InterruptedException) { alive = false }
                 if (alive) {
                     dismissInCallUi(this)
