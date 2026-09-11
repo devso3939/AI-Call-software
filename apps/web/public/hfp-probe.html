@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenCall — Bluetooth HFP Probe</title>
+<style>
+  :root { --bg:#0b0f14; --card:#131a22; --line:#223040; --tx:#e6edf3; --dim:#8b98a5;
+          --mint:#3fd6a4; --amber:#f0b429; --red:#f45b5b; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--tx); font:15px/1.55 -apple-system,
+         "Segoe UI",Roboto,sans-serif; padding:24px }
+  .wrap { max-width:820px; margin:0 auto }
+  h1 { font-size:21px; margin:0 0 4px }
+  .sub { color:var(--dim); margin:0 0 22px; font-size:14px }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
+          padding:18px; margin-bottom:16px }
+  .card h2 { font-size:15px; margin:0 0 12px; letter-spacing:.02em }
+  ol { margin:0; padding-left:20px } li { margin-bottom:7px }
+  button { background:var(--mint); color:#05231a; border:0; border-radius:8px;
+           padding:10px 18px; font-weight:600; font-size:14px; cursor:pointer;
+           margin:4px 6px 4px 0 }
+  button.ghost { background:transparent; color:var(--tx); border:1px solid var(--line) }
+  button:disabled { opacity:.45; cursor:not-allowed }
+  table { width:100%; border-collapse:collapse; font-size:13px }
+  th,td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line);
+          vertical-align:top }
+  th { color:var(--dim); font-weight:500; font-size:12px; text-transform:uppercase }
+  code { background:#0a0e13; padding:1px 5px; border-radius:4px; font-size:12px }
+  .hit { color:var(--mint); font-weight:600 }
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px;
+          font-weight:600 }
+  .pill.in { background:#1d3a4d; color:#7fc7e8 } .pill.out { background:#2d2a1a; color:var(--amber) }
+  .meter { height:22px; background:#0a0e13; border-radius:6px; overflow:hidden;
+           border:1px solid var(--line) }
+  .meter > div { height:100%; width:0%; background:linear-gradient(90deg,var(--mint),var(--amber));
+                 transition:width .05s }
+  .verdict { padding:14px; border-radius:8px; margin-top:12px; font-size:14px; display:none }
+  .verdict.ok { background:#0f2e23; border:1px solid var(--mint); display:block }
+  .verdict.no { background:#2e1414; border:1px solid var(--red); display:block }
+  .verdict.wait { background:#2e2814; border:1px solid var(--amber); display:block }
+  .log { font:12px/1.5 ui-monospace,Consolas,monospace; color:var(--dim);
+         white-space:pre-wrap; max-height:180px; overflow:auto; margin-top:10px }
+  .note { color:var(--dim); font-size:13px }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Bluetooth HFP Probe</h1>
+  <p class="sub">Checks whether this computer can capture your phone's cellular call
+  audio digitally over Bluetooth Hands-Free Profile — the zero-cost path to
+  browser-side call audio and two-way recording.</p>
+
+  <div class="card">
+    <h2>Before you start</h2>
+    <ol>
+      <li>Pair your Android phone to this computer over Bluetooth.</li>
+      <li>Windows: <b>Settings → Bluetooth → the phone → make sure the phone's
+          Bluetooth settings have <i>Phone calls</i> / <i>Call audio</i> enabled</b>
+          for this computer.</li>
+      <li>Place or receive a real phone call on the phone, and set the phone's
+          in-call audio output to <b>this paired computer</b> (the in-call screen
+          usually offers it as a Bluetooth / audio-output choice).</li>
+      <li>Keep the call connected, then run the steps below.</li>
+    </ol>
+    <p class="note">Step 1 needs microphone permission — device names are hidden
+    from web pages until it is granted.</p>
+  </div>
+
+  <div class="card">
+    <h2>Step 1 — Find the Hands-Free endpoints</h2>
+    <button id="b1">Grant mic + list audio devices</button>
+    <div id="devs"></div>
+    <div id="v1" class="verdict"></div>
+  </div>
+
+  <div class="card">
+    <h2>Step 2 — Listen for the far end's voice</h2>
+    <p class="note">Pick the Hands-Free <b>input</b> device, then ask the person on
+    the call to talk. If the meter moves when they speak — and you are not speaking —
+    the far end's voice is reaching this browser digitally.</p>
+    <select id="pick" style="background:#0a0e13;color:var(--tx);border:1px solid var(--line);
+            border-radius:7px;padding:9px;width:100%;margin-bottom:10px"></select>
+    <button id="b2" disabled>Start listening</button>
+    <button id="b3" class="ghost" disabled>Stop</button>
+    <div class="meter" style="margin-top:12px"><div id="bar"></div></div>
+    <div id="stat" class="note" style="margin-top:8px">Idle.</div>
+    <div id="v2" class="verdict"></div>
+  </div>
+
+  <div class="card">
+    <h2>Result to send back</h2>
+    <button id="b4" class="ghost">Copy report</button>
+    <div id="log" class="log">No data yet.</div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let devices = [], stream = null, ctx = null, analyser = null, raf = 0;
+let peak = 0, sustained = 0, report = [];
+
+function log(m) {
+  report.push(m);
+  $('#log').textContent = report.join('\n');
+}
+
+// Windows exposes HFP as "Hands-Free AG Audio"; Linux/PipeWire uses "HFP"/"handsfree".
+// Some stacks label it "Headset" or by the phone's own name.
+const HFP_RE = /hands[-\s]?free|handsfree|\bHFP\b|headset|AG Audio/i;
+
+$('#b1').onclick = async () => {
+  $('#v1').className = 'verdict'; $('#devs').innerHTML = '';
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    s.getTracks().forEach(t => t.stop());          // permission only
+  } catch (e) {
+    $('#v1').className = 'verdict no';
+    $('#v1').textContent = 'Microphone permission denied — device names stay hidden. Error: ' + e.name;
+    log('MIC PERMISSION: denied (' + e.name + ')');
+    return;
+  }
+
+  devices = (await navigator.mediaDevices.enumerateDevices())
+              .filter(d => d.kind === 'audioinput' || d.kind === 'audiooutput');
+
+  const rows = devices.map(d => {
+    const hit = HFP_RE.test(d.label);
+    return `<tr>
+      <td><span class="pill ${d.kind === 'audioinput' ? 'in' : 'out'}">${
+           d.kind === 'audioinput' ? 'IN' : 'OUT'}</span></td>
+      <td class="${hit ? 'hit' : ''}">${d.label || '(unnamed)'}</td>
+      <td>${hit ? '← Hands-Free' : ''}</td></tr>`;
+  }).join('');
+  $('#devs').innerHTML = `<table><tr><th></th><th>Device</th><th></th></tr>${rows}</table>`;
+
+  const ins  = devices.filter(d => d.kind === 'audioinput'  && HFP_RE.test(d.label));
+  const outs = devices.filter(d => d.kind === 'audiooutput' && HFP_RE.test(d.label));
+
+  log('=== OpenCall HFP probe ===');
+  log('UA: ' + navigator.userAgent);
+  log('when: ' + new Date().toISOString());
+  log('audio devices: ' + devices.length);
+  devices.forEach(d => log(`  [${d.kind}] ${d.label || '(unnamed)'}`));
+  log(`HFP inputs: ${ins.length}, HFP outputs: ${outs.length}`);
+
+  // Populate step 2 — HFP candidates first, then everything else as a fallback.
+  const inputs = devices.filter(d => d.kind === 'audioinput');
+  inputs.sort((a, b) => (HFP_RE.test(b.label) ? 1 : 0) - (HFP_RE.test(a.label) ? 1 : 0));
+  $('#pick').innerHTML = inputs.map(d =>
+    `<option value="${d.deviceId}">${HFP_RE.test(d.label) ? '★ ' : ''}${
+      d.label || '(unnamed input)'}</option>`).join('');
+  $('#b2').disabled = inputs.length === 0;
+
+  if (ins.length) {
+    $('#v1').className = 'verdict ok';
+    $('#v1').innerHTML = `<b>Found ${ins.length} Hands-Free input.</b> ` +
+      `This computer can see the phone's call-audio endpoint. Continue to step 2 — ` +
+      `that is the test that actually matters.`;
+  } else {
+    $('#v1').className = 'verdict wait';
+    $('#v1').innerHTML = `<b>No Hands-Free input detected.</b> Usually this means the ` +
+      `phone is not paired with call audio enabled, or no call is active — Windows ` +
+      `often only exposes the endpoint while a call is up. Start a call, keep it ` +
+      `connected, and click again. If it never appears, HFP capture is not available here.`;
+  }
+};
+
+$('#b2').onclick = async () => {
+  const id = $('#pick').value;
+  const dev = devices.find(d => d.deviceId === id);
+  try {
+    // No processing: AEC/NS/AGC would chew into a signal that is already clean.
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { deviceId: { exact: id }, echoCancellation: false,
+               noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (e) {
+    $('#v2').className = 'verdict no';
+    $('#v2').textContent = 'Could not open that device: ' + e.name + ' — ' + e.message;
+    log('OPEN FAILED on "' + (dev && dev.label) + '": ' + e.name);
+    return;
+  }
+
+  const st = stream.getAudioTracks()[0].getSettings();
+  log('opened: "' + (dev && dev.label) + '"');
+  log('  settings: ' + JSON.stringify(st));
+
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  ctx.createMediaStreamSource(stream).connect(analyser);
+  // Deliberately NOT connected to destination — avoids a feedback loop.
+
+  const buf = new Float32Array(analyser.fftSize);
+  peak = 0; sustained = 0;
+  $('#b2').disabled = true; $('#b3').disabled = false;
+  $('#v2').className = 'verdict';
+
+  const tick = () => {
+    analyser.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    const rms = Math.sqrt(sum / buf.length);
+    const pct = Math.min(100, rms * 400);
+    $('#bar').style.width = pct + '%';
+    if (rms > peak) peak = rms;
+    if (rms > 0.01) sustained++;
+    $('#stat').textContent =
+      `rms ${rms.toFixed(4)} · peak ${peak.toFixed(4)} · frames above floor ${sustained}` +
+      ` · ${ctx.sampleRate} Hz`;
+    if (sustained > 25 && $('#v2').className !== 'verdict ok') {
+      $('#v2').className = 'verdict ok';
+      $('#v2').innerHTML = '<b>Signal detected.</b> If that was the other person ' +
+        'talking and not you, HFP capture works here — the zero-cost audio and ' +
+        'two-way recording fix is viable. Click Stop and copy the report.';
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  tick();
+};
+
+$('#b3').onclick = () => {
+  cancelAnimationFrame(raf);
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (ctx) ctx.close();
+  stream = ctx = null;
+  $('#b2').disabled = false; $('#b3').disabled = true;
+  $('#bar').style.width = '0%';
+  log(`RESULT peak=${peak.toFixed(4)} sustainedFrames=${sustained} ` +
+      `verdict=${sustained > 25 ? 'SIGNAL PRESENT' : 'SILENT'}`);
+  if (sustained <= 25) {
+    $('#v2').className = 'verdict no';
+    $('#v2').innerHTML = '<b>No sustained signal.</b> Either the far end was not ' +
+      'talking, or this endpoint carries no audio. Retry while they speak ' +
+      'continuously for ~5 seconds.';
+  }
+};
+
+$('#b4').onclick = async () => {
+  try { await navigator.clipboard.writeText(report.join('\n')); $('#b4').textContent = 'Copied'; }
+  catch { $('#b4').textContent = 'Select the text below manually'; }
+  setTimeout(() => { $('#b4').textContent = 'Copy report'; }, 2000);
+};
+</script>
+</body>
+</html>
