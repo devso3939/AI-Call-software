@@ -157,11 +157,14 @@ object AudioRoute {
         mode = Mode.SPEAKER
         try {
             tryInCallSpeaker(false)
-            if (!inCallRouteApplied) {
-                val a = am(ctx) ?: return
-                // 1.5.14 — clear the communication-device override first so
-                // the legacy flags actually take effect again.
-                clearCommDevice(ctx)
+            // AUDIT FIX: the comm-device override + MODE_NORMAL reset must run
+            // UNCONDITIONALLY — the old `if (!inCallRouteApplied)` guard left
+            // the setCommunicationDevice() override and MODE_IN_CALL stuck
+            // after a call whose route went through the InCallService, so
+            // later notification/media audio routed wrongly until reboot.
+            clearCommDevice(ctx)
+            val a = am(ctx)
+            if (a != null) {
                 a.isSpeakerphoneOn = false
                 a.isBluetoothScoOn = false
                 try { a.stopBluetoothSco() } catch (_: Throwable) {}

@@ -46,24 +46,21 @@ object CallControl {
 
     /**
      * True when the OS will actually serve us InCallService callbacks:
-     * default dialer, MANAGE_OWN_CALLS "Other apps" grant, or (API 33+)
-     * the CALL_COMPANION consent toggle. Without it we still can dial and
-     * report coarse state via PHONE_STATE — just not exact per-call state.
+     * default dialer, or (API 33+) the CALL_COMPANION consent toggle.
+     * Without it we still can dial and report coarse state via PHONE_STATE
+     * — just not exact per-call state.
+     *
+     * AUDIT FIX: the old API 33+ branch tested MANAGE_OWN_CALLS via
+     * checkSelfPermission — but that's a permission WE declare, so it is
+     * always "granted" and made call_state_probe report icsBound=true even
+     * with no Telecom binding at all. There is no public query for the
+     * CALL_COMPANION role, so the honest test here is the default-dialer
+     * check only; live calls are still detected via FullCallService.calls.
      */
     fun hasInCallBinding(ctx: Context): Boolean {
         return try {
             val tm = ctx.getSystemService(TelecomManager::class.java) ?: return false
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && tm.defaultDialerPackage == ctx.packageName) return true
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                ctx.getSystemService(android.telecom.TelecomManager::class.java)
-                    ?.let { true } == true) {
-                // API 33+: READ_PHONE_NUMBERS-style check is not it — the
-                // honest test is whether Telecom grants us the role. There is
-                // no public query for CALL_COMPANION, so approximate:
-                // MANAGE_OWN_CALLS is granted to companion apps.
-                return ctx.checkSelfPermission("android.permission.MANAGE_OWN_CALLS") == PackageManager.PERMISSION_GRANTED
-            }
-            false
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && tm.defaultDialerPackage == ctx.packageName
         } catch (_: Exception) { false }
     }
 
@@ -76,7 +73,8 @@ object CallControl {
                 Log.w(TAG, "CALL_PHONE not granted — cannot dial")
                 return false
             }
-            FullCallService.pendingOutbound = true
+            // AUDIT FIX: removed `FullCallService.pendingOutbound = true` —
+            // the flag was written here but never read anywhere (dead state).
             // 1.5.7 silent dialer: get home in front BEFORE the dialer's
             // InCallUI activity launches — shrinks the visible pop to a
             // brief flash at worst, and FullCallService keeps dismissing
@@ -141,14 +139,9 @@ object CallControl {
         }
     }
 
-    /** Answer the ringing call through the InCallService Call object (best path). */
-    fun answerViaCallObject(): Boolean = try {
-        val ringing = FullCallService.calls.firstOrNull { FullCallService.stateLabel(it) == "ringing" }
-        if (ringing != null) {
-            ringing.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY)
-            true
-        } else false
-    } catch (e: Exception) { false }
+    // AUDIT FIX: removed dead answerViaCallObject() — never called anywhere;
+    // inbound answering goes through FullCallService's Call callback
+    // (auto-answer) and the answer_call gateway command.
 
     // ─────────── web-app call controls (routed via gateway_commands) ───────────
 

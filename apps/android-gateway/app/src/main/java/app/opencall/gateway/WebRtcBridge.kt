@@ -129,18 +129,23 @@ class WebRtcBridge(
     private var routeKeeper: Thread? = null
     @Volatile private var closed: Boolean = false
 
-    private val egl: EglBase = EglBase.create()
+    /** AUDIT FIX: now nullable — close() releases it, ensureFactory() recreates
+     *  it (start() calls close() first, so a reused bridge instance must be able
+     *  to rebuild both the EGL context and the factory). */
+    private var egl: EglBase? = EglBase.create()
 
     /** One-time factory init (idempotent). */
     private fun ensureFactory() {
-        if (factory != null) return
+        if (factory != null && egl != null) return
+        if (egl == null) egl = EglBase.create()
+        val e = egl!!
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(ctx)
                 .setEnableInternalTracer(false)
                 .createInitializationOptions(),
         )
-        val enc = DefaultVideoEncoderFactory(egl.eglBaseContext, true, true)
-        val dec = DefaultVideoDecoderFactory(egl.eglBaseContext)
+        val enc = DefaultVideoEncoderFactory(e.eglBaseContext, true, true)
+        val dec = DefaultVideoDecoderFactory(e.eglBaseContext)
         factory = PeerConnectionFactory.builder()
             .setVideoEncoderFactory(enc)
             .setVideoDecoderFactory(dec)
@@ -432,12 +437,26 @@ class WebRtcBridge(
             try { audioTrack?.let { liveTracks.remove(it) } } catch (_: Exception) {}
         }
         try { audioTrack?.setEnabled(false) } catch (_: Exception) {}
+        // AUDIT FIX: dispose the TRACK first, then the source — the old code
+        // disposed the source while the track was still alive and never
+        // disposed the track at all (native audio-track resource leak per call).
+        try { audioTrack?.dispose() } catch (_: Exception) {}
         try { audioSource?.dispose() } catch (_: Exception) {}
         audioSource = null
         audioTrack = null
         callId?.let { DeviceStore.saveSigSeq(ctx, it, sigSeq) }
         callId = null
+        // AUDIT FIX: interrupt the poll thread so close() doesn't leave it
+        // lingering up to 8 s in a sleep backoff (routeKeeper already does this).
+        try { pollThread?.interrupt() } catch (_: Exception) {}
         pollThread = null
+        // AUDIT FIX: the factory and EGL context hold native (JNI) resources —
+        // every bridge restart used to leak both. Safe to dispose here: the
+        // PeerConnection above is already closed.
+        try { factory?.dispose() } catch (_: Exception) {}
+        factory = null
+        try { egl?.release() } catch (_: Exception) {}
+        egl = null
         // 1.5.12b — stop the route keeper BEFORE speakerOff so it can't
         // re-pin the speaker after we've released it.
         try { routeKeeper?.interrupt() } catch (_: Exception) {}

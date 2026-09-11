@@ -93,12 +93,32 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.14 · versionCode 21). Two APKs:
+            build (v1.5.15 · versionCode 22). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.15 highlights — full-project audit: 19 bugs found & fixed
+            **Web app (app.html):**
+            - **Recording no longer doubles the far end** — the far-end audio was wired into the recorder bus twice (direct AND via the speaker mix), summing it to ~2× amplitude in every MP3. One path removed.
+            - **First login no longer throws** — `removeChannel(null)` crashed the realtime teardown on a fresh session (realtime-js unsubscribes the argument unconditionally).
+            - **Rejoin guard actually matches** — `joinRoom` compared the channel's prefixed topic (`realtime:<room>`) against the bare room name, so the "already joined" check never fired and duplicate channels piled up.
+            - **Recording start race fixed** — two near-simultaneous triggers could both pass the recorder-null check and spawn duplicate mic taps; a synchronous claim flag now serializes starts.
+            - **Pairing code survives refresh** — a device row appearing in a routine devices refresh could wipe a FRESHLY issued pairing code with a false "Android device paired ✓"; the wipe now only fires for devices that appeared after the code was issued.
+            - **Guest calls answerable instantly** — the inbound-event poll now starts BEFORE media negotiation, so the Answer button works during the (long) mic-acquisition window.
+            - **Call timer starts on answer** — gateway calls previously kept the timer running from the dial moment; `startedAt` now resets when the call actually connects.
+            - **Level-meter leak fixed** — the far-end analyser stayed connected to the recorder tap after every call; it is now disconnected on stop, and the stop is wired into PSTN call teardown too.
+            - **Honest hang-up + re-entry guards** — `hangup()` uses the correct guest/own client; `enterApp` and `joinBridge` cannot double-run; XSS-safe escaping (`jsArg`) for pairing codes, API keys and doc snippets in click handlers; exactly one toast stack ever exists; dead code removed.
+            **Android gateway:**
+            - **Telecom no longer stalls** — inbound-call reporting blocked Telecom's binder thread up to 5 s (ANR risk); it is now fire-and-forget.
+            - **Simulated ringing state fixed** — the inlined `STATE_SIMULATED_RINGING` value was wrong (matched nothing); the real constant is 13 (API 30) and maps to "ringing", not "active".
+            - **Native resource leaks plugged** — `PeerConnectionFactory`, `EglBase` and the WebRTC `AudioTrack` are now disposed on every bridge close (and correctly recreated on reuse).
+            - **Bridge death reported honestly** — if the WebRTC bridge dies (TURN unreachable, peer gone), the browser is told "failed" instead of sitting on "dialing" forever.
+            - **Hang-up reports truthfully** — `end_call` only publishes "ended" when Telecom actually accepted the hang-up.
+            - **Audio route cleanup unconditional** — the communication-device override and MODE_NORMAL reset now always run at speaker-off (previously skipped after InCallService-routed calls, leaving later audio misrouted).
+            - **Dialer pass-through can't loop** — the DialDuck forward excludes itself, so the app can't launch-launch-launch when it IS the default dialer; the poll thread is interrupted on close; the call mask refreshes its number on a second call; dead code removed; `call_state_probe` no longer lies about the InCallService binding (it tested a permission the app itself declares — always "granted").
 
             ### v1.5.14 highlights — THE far-end voice fix
             - **"Set as phone app" now actually grantable** — the app was never ELIGIBLE for the default-phone-app role (no ACTION_DIAL handler in the manifest), so Android's role screen silently did nothing and the heartbeat kept reporting `dialer:false`. Without that role, telecom kept the SIM call audio on the **earpiece**: the far end's voice never reached the loudspeaker → never reached the mic → never reached the browser → never recorded. A transparent pass-through dialer activity fixes eligibility.

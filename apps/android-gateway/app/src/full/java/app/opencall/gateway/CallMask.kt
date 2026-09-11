@@ -139,7 +139,17 @@ object CallMask {
      */
     @Synchronized
     fun show(ctx: Context, number: String?): Boolean {
-        if (view != null) return true          // already up
+        if (view != null) {
+            // AUDIT FIX: refresh the number when the mask is already up —
+            // show() is called on every onCallAdded, and a second call in
+            // the same mask lifetime (e.g. a call-waiting swap) used to
+            // leave the OLD number on screen for the NEW call.
+            if (number != this.number) {
+                this.number = number
+                swapTo(if (bridged) bridgedBody(number) else waitingBody(number))
+            }
+            return true
+        }
         if (!allowed(ctx)) return false        // no overlay grant — silent skip
         try {
             val manager = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false

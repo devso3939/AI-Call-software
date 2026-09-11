@@ -275,9 +275,17 @@ class GatewayService : Service() {
                 "end_call" -> {
                     val callId = cmd.payload.optString("callId")
                     ok = CallControl.endCall(this)
-                    Rpc.rpc("update_gateway_call", JSONObject()
-                        .put("p_device_id", devId).put("p_secret", secret)
-                        .put("p_call_id", callId).put("p_state", "ended"))
+                    // AUDIT FIX: only report "ended" when the hang-up actually
+                    // succeeded — the old code published "ended" even when
+                    // Telecom rejected it, so the browser showed the call over
+                    // while the cellular call was still live.
+                    if (ok) {
+                        Rpc.rpc("update_gateway_call", JSONObject()
+                            .put("p_device_id", devId).put("p_secret", secret)
+                            .put("p_call_id", callId).put("p_state", "ended"))
+                    } else {
+                        result = JSONObject().put("error", "end failed — no active call or Telecom rejected the hang-up")
+                    }
                     bridge?.close()
                     // 1.5.12: the Bluetooth hands-free session ends with the call
                     prefs.edit().putBoolean("hfpMode", false).apply()
@@ -407,14 +415,59 @@ class GatewayService : Service() {
         if (bridge == null) {
             // 1.5.8: acousticBridge=true — mic captures WITHOUT hardware AEC
             // so the loudspeaker→mic hop (the whole bridge path) survives.
+            // AUDIT FIX: wire onConnected/onGone like the lite flavor — without
+            // them a failed bridge (TURN unreachable, peer gone) left the
+            // overlay showing "connected" and the call state stuck on
+            // "dialing" forever while the cellular call ran with nobody
+            // listening on the browser side.
             bridge = WebRtcBridge(
                 this,
                 DeviceStore.deviceId(this)!!,
                 DeviceStore.secret(this)!!,
+                onConnected = {
+                    // State reporting stays with FullCallService (telecom is
+                    // the source of truth for ringing/active — the bridge can
+                    // connect while the call is still RINGING, so reporting
+                    // "answered" here would lie). Just log.
+                    Log.i(TAG, "bridge CONNECTED")
+                },
+                onGone = {
+                    // AUDIT FIX: bridge died (TURN unreachable, peer gone) —
+                    // tell the browser so its call panel doesn't sit on
+                    // "dialing" forever. Only when no terminal state was
+                    // already published for this call.
+                    val cid = prefs.getString("bridgeCallId", "") ?: ""
+                    if (cid.isNotBlank()) reportBridgeFailed(cid)
+                },
+                // 1.5.8 FIX: full IS an acoustic bridge for cellular calls —
+                // the far end reaches the mic ONLY through the loudspeaker hop.
+                // Hardware AEC erases exactly that hop, so it must be OFF here.
                 acousticBridge = true,
             )
         }
         return bridge!!
+    }
+
+    /**
+     * AUDIT FIX helper: publish state=failed for a call at most once —
+     * FullCallService also reports terminal states via update_gateway_call,
+     * so this must not fight it (and must not fire after "completed"/"ended").
+     */
+    private var bridgeFailedReportedFor: String? = null
+    private fun reportBridgeFailed(callId: String) {
+        if (bridgeFailedReportedFor == callId) return
+        bridgeFailedReportedFor = callId
+        val devId = DeviceStore.deviceId(this) ?: return
+        val secret = DeviceStore.secret(this) ?: return
+        try {
+            Rpc.rpc("update_gateway_call", JSONObject()
+                .put("p_device_id", devId).put("p_secret", secret)
+                .put("p_call_id", callId).put("p_state", "failed")
+                .put("p_error", "audio bridge connection failed"))
+            Log.w(TAG, "bridge FAILED for call $callId — reported to server")
+        } catch (e: Exception) {
+            Log.w(TAG, "bridge failure report failed: ${e.message}")
+        }
     }
 
     private fun readBattery(): Int? {

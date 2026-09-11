@@ -64,9 +64,6 @@ class FullCallService : InCallService() {
             mute entry point is InCallService.setMuted(Boolean). */
         @Volatile var instance: FullCallService? = null
 
-        /** Set by CallControl.placeCall so onCallAdded knows this is ours. */
-        @Volatile var pendingOutbound: Boolean = false
-
         /**
          * 1.5.6 — server-driven inbound handling. The GatewayService polls
          * gateway_commands; when the user taps Answer/Decline in the web app
@@ -83,7 +80,12 @@ class FullCallService : InCallService() {
             Call.STATE_NEW, Call.STATE_CONNECTING, Call.STATE_DIALING -> "dialing"
             Call.STATE_RINGING -> "ringing"
             Call.STATE_ACTIVE -> "active"
-            if (Build.VERSION.SDK_INT >= 34) 1076111470 else -1 -> "active" // STATE_SIMULATED_RINGING (API 34), inlined to compile on older SDKs
+            // AUDIT FIX: STATE_SIMULATED_RINGING is actually 13 (added in API
+            // 30, not 34) — the old inlined value 1076111470 matched nothing,
+            // so simulated-ringing calls fell through to "other:13" and the
+            // browser never saw them as ringing. It is also RINGING, not
+            // ACTIVE — mapping it to "active" would have broken the answer flow.
+            if (Build.VERSION.SDK_INT >= 30) 13 else -1 -> "ringing" // STATE_SIMULATED_RINGING (API 30), inlined to compile on older SDKs
             Call.STATE_HOLDING -> "holding"
             Call.STATE_DISCONNECTED, Call.STATE_DISCONNECTING -> "ended"
             else -> "other:" + c.state
@@ -170,8 +172,13 @@ class FullCallService : InCallService() {
         // never-shipped IncomingCallReceiver). The web app shows the
         // incoming banner + Answer/Decline buttons for this call id.
         if (stateLabel(call) == "ringing" && lastDirection == "inbound") {
-            val from = safeNumber(call)
-            inboundCallId = reportIncoming(from)
+            // AUDIT FIX: reportIncoming() used to BLOCK this Telecom binder
+            // thread for up to 5 s (t.join(5000)) waiting on the server RPC —
+            // Telecom ANRs services that stall onCallAdded. Nothing on the
+            // phone consumes the returned callId synchronously (the web app
+            // discovers calls via its own polling), so report asynchronously
+            // and store the id when it arrives.
+            reportIncomingAsync(safeNumber(call))
             if (autoAnswerInbound) {
                 Log.i(TAG, "auto-answer inbound call (agent mode)")
                 Thread {
@@ -340,28 +347,27 @@ class FullCallService : InCallService() {
     }
 
     /**
-     * 1.5.6: inbound ringing → report_incoming_call. Returns the server
-     * call id (the web app's Answer/Decline buttons target it). Runs on a
-     * worker thread — onCallAdded must stay quick or Telecom ANRs us.
+     * 1.5.6: inbound ringing → report_incoming_call (fire-and-forget).
+     * AUDIT FIX: used to block the Telecom binder thread with t.join(5000)
+     * waiting for the server RPC — Telecom ANRs services that stall
+     * onCallAdded. Now fully async: the RPC runs on a worker thread and the
+     * returned call id is stored when it arrives (nothing on the phone needs
+     * it synchronously).
      */
-    private fun reportIncoming(from: String?): String? {
-        val devId = DeviceStore.deviceId(this) ?: return null
-        val secret = DeviceStore.secret(this) ?: return null
-        val r = java.util.concurrent.atomic.AtomicReference<String?>()
-        val t = Thread {
+    private fun reportIncomingAsync(from: String?) {
+        val devId = DeviceStore.deviceId(this) ?: return
+        val secret = DeviceStore.secret(this) ?: return
+        Thread {
             try {
                 val res = Rpc.rpc("report_incoming_call", JSONObject()
                     .put("p_device_id", devId)
                     .put("p_secret", secret)
                     .put("p_from", from ?: "unknown"))
                 val id = res?.optString("callId")?.takeIf { it.isNotBlank() }
-                r.set(id)
+                inboundCallId = id
                 Log.i(TAG, "reported inbound call from $from → callId=$id")
             } catch (e: Exception) { Log.w(TAG, "report_incoming_call failed: ${e.message}") }
-        }
-        t.start()
-        t.join(5000)   // generous, but bounded — Telecom is waiting on us
-        return r.get()
+        }.start()
     }
 
     private fun safeNumber(call: Call): String? = try {

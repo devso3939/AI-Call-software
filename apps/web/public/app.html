@@ -487,7 +487,9 @@ function recTapAudio() {
     g.mix.connect(g.ctx.destination);           // speakers (what the user hears)
     g.bus = g.ctx.createGain(); g.bus.gain.value = 1.0;   // recorder input — REAL signal (1.5.8 fix)
     g.tap.connect(g.bus);
-    g.mix.connect(g.bus);
+    // AUDIT FIX: g.mix.connect(g.bus) removed — mix only carries the tap,
+    // so keeping both paths summed the far end to ~2x amplitude in the MP3
+    // (tap→bus directly AND tap→mix→bus). Mic joins the bus separately.
     g.proc = g.ctx.createScriptProcessor(4096, 1, 1);
     g.proc.onaudioprocess = (e) => {
       if (!callRecorder) return;                 // only capture while a recorder is live
@@ -603,14 +605,25 @@ async function encodeMp3(chunks, sampleRate) {
    live HERE, on the device running the web app. */
 
 /* start recording once remote audio exists (called on call → active) */
+let recStarting = false;   // AUDIT FIX: sync claim flag — see below
 async function startRecordingIfPossible(localStream) {
-  if (!call.callId || callRecorder) return;
-  // tiny retry: remoteAudio.srcObject lands with ontrack, sometimes a beat later
-  for (let i = 0; i < 10 && !(remoteAudio.srcObject); i++) await new Promise(r => setTimeout(r, 300));
-  if (!remoteAudio.srcObject) return;
-  const rec = new CallRecorder();
-  const ok = await rec.start(localStream || null);
-  if (ok) { callRecorder = rec; renderApp(); }
+  // AUDIT FIX: ontrack can fire more than once per call (renegotiation).
+  // The old guard (`callRecorder`) only took effect AFTER the awaited retry
+  // loop + rec.start(), so two concurrent invocations both created a
+  // recorder and the loser's mic tap was never disconnected — the mic was
+  // doubled in the MP3. Claim synchronously before any await.
+  if (!call.callId || callRecorder || recStarting) return;
+  recStarting = true;
+  try {
+    // tiny retry: remoteAudio.srcObject lands with ontrack, sometimes a beat later
+    for (let i = 0; i < 10 && !(remoteAudio.srcObject); i++) await new Promise(r => setTimeout(r, 300));
+    if (!remoteAudio.srcObject || callRecorder) return;
+    const rec = new CallRecorder();
+    const ok = await rec.start(localStream || null);
+    if (ok) { callRecorder = rec; renderApp(); }
+  } finally {
+    recStarting = false;
+  }
 }
 
 /* stop + persist (called from every end path) */
@@ -709,6 +722,9 @@ function farMeterLoop() {
 function farMeterStop() {
   try { if (farMeter.raf) cancelAnimationFrame(farMeter.raf); } catch {}
   farMeter.raf = 0;
+  // AUDIT FIX: disconnect the analyser from the tap before dropping it —
+  // otherwise each call leaked one connected analyser node on the tap.
+  try { if (farMeter.analyser && recGraph.tap) recGraph.tap.disconnect(farMeter.analyser); } catch {}
   farMeter.analyser = null; farMeter.buf = null;
   farMeter.everActive = false; farMeter.lastLevel = 0;
 }
@@ -729,6 +745,7 @@ let smsTo = '';
 let smsBody = '';
 let pairingCode = null;          // 6-digit code waiting to be typed into the app
 let pairingAt = 0;
+let pairingKnownIds = null;      // AUDIT FIX: device ids known when the code was issued
 let forceTwilio = false;         // route override when both gateway + Twilio are up
 
 /* OpenCall Connect: API keys for external apps/services */
@@ -790,7 +807,10 @@ async function logout() {
   location.reload();
 }
 
+let appEntered = false;   // AUDIT FIX: re-entrancy guard for enterApp
 async function enterApp(p) {
+  if (appEntered) return;   // boot/route can re-fire (hashchange back from a guest link) — never stack timers/listeners
+  appEntered = true;
   me = p;
   renderApp();
   await Promise.all([refreshHistory(), refreshContacts()]);
@@ -945,6 +965,7 @@ async function endPstnCall(reason) {
   const id = call.callId;
   const wasActive = call.phase === 'active';
   stopRecordingAndSave();   // 1.5.7: encode + upload what we captured
+  farMeterStop();           // AUDIT FIX: stop the meter on the PSTN end path too
   if (activeTwilioCall) { try { activeTwilioCall.disconnect(); } catch {} activeTwilioCall = null; }
   call = { callId:null, phase:'idle', remoteName:'', peerId:null, isGuest:false, isPstn:false,
            quality:'unknown', rttMs:null, startedAt:null, routeNote:'', role:null };
@@ -1001,7 +1022,16 @@ async function refreshDevices() {
     // queue_gateway_command allowlist is the real gate — this just keeps
     // the UI honest for genuinely too-old phones.
     gatewayFull = !v.includes('-lite') && !v.startsWith('1.5.4') && !v.startsWith('1.5.3') && v !== '';
-    if (gatewayOnline && pairingCode) { pairingCode = null; showToast('Android device paired ✓'); renderApp(); return; }
+    // AUDIT FIX: the old check cleared the pairing code whenever ANY device
+    // was online — so with one phone already paired, starting a pairing for
+    // a second phone was instantly wiped with a false "paired ✓" toast on
+    // the first phone's next heartbeat. Only clear when a NEW device id
+    // actually appeared since the pairing code was issued.
+    if (gatewayOnline && pairingCode) {
+      const known = pairingKnownIds || new Set();
+      const fresh = next.find(d => !known.has(d.id));
+      if (fresh) { pairingCode = null; pairingKnownIds = null; showToast('Android device paired ✓'); renderApp(); return; }
+    }
     if (!visEq(nextVis, prevVis) || gwChanged) renderApp();   // re-render only on real change
   }
 }
@@ -1030,6 +1060,9 @@ async function startPairing() {
   const { data, error } = await sb.rpc('create_pairing_code');
   if (error) return setError(honestError(error));
   pairingCode = data; pairingAt = Date.now();
+  // AUDIT FIX: snapshot which devices already exist so refreshDevices only
+  // clears the code when a genuinely NEW device appears.
+  pairingKnownIds = new Set(gatewayDevices.map(d => d.id));
   renderApp();
 }
 
@@ -1153,6 +1186,7 @@ async function answerWithBridge() {
 /* join the audio bridge later, from the onphone banner */
 async function joinBridge() {
   if (!call.callId || !call.isGateway) return;
+  if (pc) return;   // AUDIT FIX: never overwrite a live connection (would leak it + its stats interval)
   call.phase = 'active';
   call.startedAt = call.startedAt || Date.now();
   eventSeq = 0;
@@ -1225,6 +1259,10 @@ function gatewayOnStatus(status) {
   if (status === 'answered' && (call.phase === 'dialing' || call.phase === 'ringing')) {
     clearTimeout(ringTimeout); ringTimeout = null;
     call.phase = 'active';
+    // AUDIT FIX: reset the clock on answer — placeGatewayCall set startedAt
+    // at DIAL time, so the timer/toast counted up to 45 s of ringing as
+    // talk time (on-net and PSTN paths already reset it on answer).
+    call.startedAt = Date.now();
     renderApp();
   }
   if (['rejected','no_answer','failed','cancelled','completed'].includes(status)) {
@@ -1242,7 +1280,9 @@ async function endGatewayCall(reason) {
 
 /* ---------------- realtime wiring (user session) ---------------- */
 function wireRealtime() {
-  sb.removeChannel(liveChannel);
+  // AUDIT FIX: removeChannel(null) threw on first login (realtime-js calls
+  // channel.unsubscribe() on the argument) — guard before removing.
+  if (liveChannel) sb.removeChannel(liveChannel);
   liveChannel = sb.channel('live-' + me.id)
     // new call ringing for me
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calls', filter: 'callee_id=eq.' + me.id },
@@ -1366,8 +1406,14 @@ function sigRoomName(peerId) { return 'sig-' + [me?.id || 'guest', peerId].sort(
 /* join (and keep) the per-call broadcast room */
 function joinRoom(peerId) {
   const room = sigRoomName(peerId);
-  if (roomChannel && roomChannel.topic === room) return Promise.resolve();
-  sb.removeChannel(roomChannel); roomChannel = null;
+  // AUDIT FIX: RealtimeChannel.topic is prefixed with 'realtime:' (sb.channel
+  // stores `realtime:${name}`), so comparing topic === room never matched and
+  // the re-entry guard silently failed — a second joinRoom for the same peer
+  // tore down a live signaling channel mid-subscription. Use subTopic (the
+  // unprefixed name) and guard the removeChannel against null as well.
+  if (roomChannel && (roomChannel.subTopic === room || roomChannel.topic === 'realtime:' + room)) return Promise.resolve();
+  if (roomChannel) sb.removeChannel(roomChannel);
+  roomChannel = null;
   const ch = sb.channel(room, { config: { broadcast: { self: false } } });
   ch.on('broadcast', { event: 'signal' }, (msg) => {
     const p = msg.payload || {};
@@ -1516,16 +1562,17 @@ async function acceptIncoming() {
            quality: 'unknown', rttMs: null, startedAt: Date.now(), routeNote: 'FREE ON-NET · internet call', role: 'callee' };
   eventSeq = 0;
   renderApp();
+  // AUDIT FIX: start the durable event poll BEFORE startMedia — a guest
+  // caller's offer arrives ONLY through this poll, and startMedia can block
+  // for many seconds on the mic-permission prompt, delaying connect by the
+  // whole prompt window. (answerWithBridge already did it in this order.)
+  startEventPoll();
   if (!isGuest) await joinRoom(fromId);
   await startMedia('callee');
-  startEventPoll();
 }
 
-async function answerIncoming(callId) {
-  // used when banner shows a call whose incoming object was cleared or for re-accept; kept simple
-  const { error } = await sb.rpc('answer_call', { p_call_id: callId });
-  if (error) return setError(honestError(error));
-}
+// AUDIT FIX: removed dead answerIncoming() — never referenced (the banner's
+// Accept path is acceptIncoming(), which does media + polling itself).
 
 async function rejectIncoming() {
   if (!incoming) return;
@@ -1541,7 +1588,7 @@ async function hangup() {
   const hadMedia = !!pc;
   if (hadMedia) { try { await sendSignal('bye', {}); } catch {} }
   endCallLocal('ended');
-  if (id) await sb.rpc('hangup_call', { p_call_id: id, p_reason: 'hangup' }).then(() => {}, () => {});
+  if (id) await activeSb().rpc('hangup_call', { p_call_id: id, p_reason: 'hangup' }).then(() => {}, () => {});   // AUDIT FIX: activeSb() like every other guest-reachable RPC
 }
 
 function endCallLocal(reason) {
@@ -1607,7 +1654,9 @@ async function buildRtcConfig() {
   } catch {}
   return { iceServers, iceCandidatePoolSize: 4 };
 }
-const RTC_CONFIG = { iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ] };   // fallback if buildRtcConfig is somehow not used
+// AUDIT FIX: removed dead RTC_CONFIG — every RTCPeerConnection uses
+// buildRtcConfig() (TURN creds fetched fresh from the server). The old
+// STUN-only constant was never referenced.
 
 /* mic acquisition with an honest timeout: a hung device must not stall the call forever */
 function getMic(ms = 15000) {
@@ -1726,17 +1775,8 @@ function updateQualityUI() {
   const lbl = document.querySelector('.qlabel'); if (lbl) lbl.textContent = call.quality === 'unknown' ? 'connecting…' : call.quality;
 }
 
-function toggleMute(btn) {
-  muteState = !muteState;
-  if (call.isPstn) {                       // Twilio manages its own mic stream
-    try { if (activeTwilioCall) activeTwilioCall.mute(muteState); } catch {}
-    btn.textContent = muteState ? 'Unmute' : 'Mute';
-    return;
-  }
-  if (!localStream) { muteState = false; return; }
-  localStream.getAudioTracks().forEach(t => t.enabled = !muteState);
-  btn.textContent = muteState ? 'Unmute' : 'Mute';
-}
+// AUDIT FIX: removed dead toggleMute() — never referenced; muting goes
+// through the in-call panel buttons (cpMic/cpPhoneMic → gwToggleMute).
 
 /* ---------------- history / contacts / sweep ---------------- */
 /* BLINK FIX: background refreshers (history / sms / devices / contacts) used to
@@ -1822,6 +1862,10 @@ async function createGuestLink() {
 let loginMode = 'login';
 function renderLogin() {
   document.title = 'OpenCall AI — Sign in';
+  // AUDIT FIX: drop any body-level fallback toast stack (created by showToast
+  // on a previous screen) — renderApp/renderLogin provide their own
+  // #toast-stack, and two elements with the same id is invalid + confusing.
+  try { document.querySelector('body > #toast-stack')?.remove(); } catch {}
   const isLogin = loginMode === 'login';
   root.innerHTML = `
   <div class="authwrap">
@@ -1874,6 +1918,10 @@ function toggleSide() {
 function renderApp() {
   document.title = 'OpenCall AI';
   if (!me) return;
+  // AUDIT FIX: drop any body-level fallback toast stack (created by showToast
+  // while on the login/guest screen) — the shell below renders its own
+  // #toast-stack, and two elements with the same id is invalid + confusing.
+  try { document.querySelector('body > #toast-stack')?.remove(); } catch {}
   // FOCUS GUARD — a re-render must never yank the pointer out of a field the
   // user is typing in. Remember the active element (+ cursor position), and
   // restore both right after the innerHTML swap. If an element with the same
@@ -2188,7 +2236,7 @@ function tabDevices() {
     ${codeFresh ? `<div class="banner" style="margin-top:12px">
       <div class="row between" style="flex-wrap:nowrap">
         <strong>Pairing code: <span style="font-size:1.4rem;letter-spacing:.2em" class="mint">${esc(pairingCode)}</span></strong>
-        <button class="copybtn" onclick="copyText('${esc(pairingCode)}','Code copied')">Copy</button>
+        <button class="copybtn" onclick="copyText('${jsArg(pairingCode)}','Code copied')">Copy</button>
       </div>
       <div class="tiny" style="margin-top:6px">Open the OpenCall Gateway app on your Android → type this code → Pair. Valid 15 minutes, single use.
      Expires in <span data-pairmins>${Math.max(0, Math.ceil((15 * 60000 - (Date.now() - pairingAt)) / 60000))}</span> min.</div>
@@ -2202,19 +2250,19 @@ function connectDocs(keyRef) {
   return `
   <p class="tiny" style="margin:10px 0 0">Every request is a POST to the OpenCall REST endpoint with the public project key <code>apikey</code> header and your API key in the payload. No SDK needed — works from any language, any server, any automation platform (Zapier, n8n, Make, GitHub Actions…).</p>
   <label class="label">1 · Check what the key can reach</label>
-  <button class="copybtn" onclick="copyText(connectExample('status','${esc(keyRef || '')}'))">Copy</button>
+  <button class="copybtn" onclick="copyText(connectExample('status','${jsArg(keyRef || '')}'))">Copy</button>
   <pre class="code">${esc(connectExample('status', keyRef))}</pre>
   <label class="label">2 · Send an SMS from your number</label>
-  <button class="copybtn" onclick="copyText(connectExample('sms','${esc(keyRef || '')}'))">Copy</button>
+  <button class="copybtn" onclick="copyText(connectExample('sms','${jsArg(keyRef || '')}'))">Copy</button>
   <pre class="code">${esc(connectExample('sms', keyRef))}</pre>
   <label class="label">3 · Read recent messages (polling)</label>
-  <button class="copybtn" onclick="copyText(connectExample('getsms','${esc(keyRef || '')}'))">Copy</button>
+  <button class="copybtn" onclick="copyText(connectExample('getsms','${jsArg(keyRef || '')}'))">Copy</button>
   <pre class="code">${esc(connectExample('getsms', keyRef))}</pre>
   <label class="label">4 · Place a real cellular call</label>
-  <button class="copybtn" onclick="copyText(connectExample('call','${esc(keyRef || '')}'))">Copy</button>
+  <button class="copybtn" onclick="copyText(connectExample('call','${jsArg(keyRef || '')}'))">Copy</button>
   <pre class="code">${esc(connectExample('call', keyRef))}</pre>
   <label class="label">5 · Poll the call until it ends</label>
-  <button class="copybtn" onclick="copyText(connectExample('poll','${esc(keyRef || '')}'))">Copy</button>
+  <button class="copybtn" onclick="copyText(connectExample('poll','${jsArg(keyRef || '')}'))">Copy</button>
   <pre class="code">${esc(connectExample('poll', keyRef))}</pre>
   <p class="tiny" style="margin:10px 0 0"><strong>AI voice agents:</strong> a call placed through the API can carry your own audio — post WebRTC offers/answers/ICE with <code>api_post_signal</code> and read the phone's audio stream with <code>api_get_signals</code>. Your Android phone bridges the audio acoustically into the real cellular call.</p>
   <p class="tiny" style="margin:6px 0 0;color:#fca5a5"><strong>Honest limits:</strong> 60 requests/minute per account · a failed request is never counted · keys are shown once at creation (only a hash is stored) · never ship a key in client-side code — call from a server. One audio source per call: if the OpenCall web app is bridging the call, don't also join from the API.</p>`;
@@ -2268,7 +2316,7 @@ function tabConnect() {
       <strong class="mint">⚠ Copy your key now — it will never be shown again</strong>
       <input class="input" style="margin-top:8px;font-family:monospace;font-size:.8rem" readonly value="${esc(freshApiKey.key)}" onclick="this.select()">
       <div class="row" style="margin-top:8px">
-        <button class="btn btn-primary" onclick="copyText('${esc(freshApiKey.key)}','Key copied')">Copy key</button>
+        <button class="btn btn-primary" onclick="copyText('${jsArg(freshApiKey.key)}','Key copied')">Copy key</button>
         <button class="btn btn-ghost" onclick="freshApiKey=null;renderApp()">Done — I saved it</button>
       </div>
       <div class="tiny" style="margin-top:6px">Only a SHA-256 hash is stored. If you lose it, create a new key.</div>
@@ -2364,10 +2412,8 @@ function tabLinks() {
 /* ---------------- UI helpers ---------------- */
 function setTab(t) { tab = t; renderApp(); if (t === 'connect' && !apiKeysLoaded) refreshApiKeys(); }
 function dialUser(id) { dial = id; tab = 'dialer'; renderApp(); placeCall(id); }
-/* helper for empty states */
-function emptyState(ico, title, hint) {
-  return `<div class="empty"><div class="eico">${ico}</div><div class="etitle">${esc(title)}</div>${hint ? `<div class="ehint">${esc(hint)}</div>` : ''}</div>`;
-}
+// AUDIT FIX: removed dead emptyState() helper — every empty state in the app
+// is written inline with literal HTML; this generic helper was never called.
 function updateEstimate() {
   const el = document.getElementById('estimate'); if (el) el.innerHTML = estimateFor(dial);
   const btn = document.getElementById('btnCall'); if (btn) { if (canCall(dial)) btn.removeAttribute('disabled'); else btn.setAttribute('disabled', ''); }
@@ -2442,8 +2488,8 @@ function callPanel() {
     <div class="callctrls">
       ${listenOnly && !call.isGateway ? '<button class="btn btn-ghost" onclick="retryMic(this)">Retry mic</button>' : ''}
       ${canMute ? `<button id="cp-mute" class="btn ${muteState ? 'btn-danger' : 'btn-ghost'}" onclick="cpMute(this)" title="${call.isGateway ? 'Mute YOUR microphone — the far end stops hearing you' : 'Mute your microphone'}">🎤 ${muteState ? 'Unmute' : 'Mute'}</button>` : ''}
-      ${call.isGateway && gatewayFlavor !== 'bridge' && gatewayFull ? `<button id="cp-phone" class="btn ${gatewayMute ? 'btn-danger' : 'btn-ghost'}" onclick="cpPhoneMic(this)" title="Silence the phone's own microphone (room noise around the phone)">🎙 ${gatewayMute ? 'Unmute phone mic' : 'Mute phone mic'}</button>` : ''}
-      ${call.isGateway && gatewayFlavor !== 'bridge' ? `<button id="cp-spk" class="btn ${gatewaySpeaker ? 'btn-ghost' : 'btn-danger'}" onclick="cpSpeaker(this)" title="Phone loudspeaker">🔊 ${gatewaySpeaker ? 'Speaker off' : 'Speaker on'}</button>` : ''}
+      ${gwFull && gatewayFull ? `<button id="cp-phone" class="btn ${gatewayMute ? 'btn-danger' : 'btn-ghost'}" onclick="cpPhoneMic(this)" title="Silence the phone's own microphone (room noise around the phone)">🎙 ${gatewayMute ? 'Unmute phone mic' : 'Mute phone mic'}</button>` : ''}
+      ${gwFull ? `<button id="cp-spk" class="btn ${gatewaySpeaker ? 'btn-ghost' : 'btn-danger'}" onclick="cpSpeaker(this)" title="Phone loudspeaker">🔊 ${gatewaySpeaker ? 'Speaker off' : 'Speaker on'}</button>` : ''}
       ${gwFull ? `<button id="cp-hold" class="btn ${gatewayHeld ? 'btn-danger' : 'btn-ghost'}" onclick="cpHold(this)" title="Put the call on hold">⏸ ${gatewayHeld ? 'Resume' : 'Hold'}</button>` : ''}
       ${call.isPstn || (call.isGateway && gatewayFlavor !== 'bridge') ? `<button id="cp-pad" class="btn ${dtmfOpen ? 'btn-primary' : 'btn-ghost'}" onclick="toggleDtmf()" title="Dialpad (DTMF)">⌨ Keypad</button>` : ''}
     </div>

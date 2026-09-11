@@ -28,7 +28,13 @@ class DialDuckActivity : Activity() {
             val forward = Intent(Intent.ACTION_DIAL)
             if (uri != null) forward.data = uri
             forward.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(forward)
+            // AUDIT FIX: when OpenCall IS the default dialer, resolution can
+            // pick THIS activity again → launch loop. Exclude ourselves and
+            // only forward when a DIFFERENT dialer actually resolves.
+            val target = forward.resolveActivity(packageManager)
+            if (target != null && target.packageName != packageName) {
+                startActivity(forward)
+            }
         } catch (_: Exception) {
             // No other dialer on the device (we'd be the only one) — nothing
             // sensible to forward to; just exit silently.
