@@ -622,6 +622,97 @@ async function stopRecordingAndSave() {
   if (me && callId) refreshHistory();
 }
 
+/* ═══════════ 1.5.14 FAR-END LEVEL METER + AUTOPLAY RESCUE ═══════════
+   The recurring "I hear myself but not the other person" report needs a
+   DIAGNOSTIC the user can see: a live meter of what the far-end track is
+   actually delivering to this browser. The meter rides the SAME
+   MediaElementSource tap the recorder uses (recGraph.tap), so it shows
+   exactly what is heard AND recorded — no extra stream, no extra CPU.
+
+   Rules the meter encodes:
+   • meter never moved past ~zero for the whole call → the far end's voice
+     never arrived (phone-side capture problem) → red "their voice is NOT
+     reaching this device" banner with a fix-it checklist.
+   • meter moved at some point → far end arrived; silence now is just them
+     not talking.
+   • Also: remoteAudio.play() is re-attempted on every meter tick — the
+     #1 silent killer of far-end audio in Chrome is an autoplay-blocked
+     element (play() promise rejected, srcObject set, nothing heard). */
+const farMeter = {
+  analyser: null, buf: null, raf: 0,
+  everActive: false,        // did ANY real signal arrive this call?
+  startedAt: 0,             // when the meter began (grace for call connect)
+  lastLevel: 0,
+};
+function farMeterStart() {
+  const g = recGraph;
+  farMeter.everActive = false;
+  farMeter.startedAt = Date.now();
+  try {
+    // recGraph.tap is the MediaElementSource on remoteAudio — created by
+    // recTapAudio() before recording starts. If it doesn't exist yet
+    // (recording not started), create the graph now; it's idempotent.
+    if (!g.ctx && !recTapAudio()) { farMeter.analyser = null; return; }
+    if (!farMeter.analyser) {
+      farMeter.analyser = g.ctx.createAnalyser();
+      farMeter.analyser.fftSize = 512;
+      g.tap.connect(farMeter.analyser);   // tap still feeds mix/bus — analyser is read-only
+    }
+    farMeter.buf = new Uint8Array(farMeter.analyser.frequencyBinCount);
+  } catch (e) { console.warn('far meter unavailable', e); farMeter.analyser = null; }
+  if (!farMeter.raf) farMeterLoop();
+}
+function farMeterLoop() {
+  farMeter.raf = requestAnimationFrame(farMeterLoop);
+  if (!farMeter.analyser || !call.phase || call.phase === 'idle') {
+    cancelAnimationFrame(farMeter.raf); farMeter.raf = 0; return;
+  }
+  // autoplay rescue — free, idempotent, fixes the blocked-element case
+  if (remoteAudio.srcObject && remoteAudio.paused) {
+    remoteAudio.play().then(() => {}, () => {});
+  }
+  try {
+    farMeter.analyser.getByteTimeDomainData(farMeter.buf);
+    let peak = 0;
+    for (let i = 0; i < farMeter.buf.length; i++) {
+      const v = Math.abs(farMeter.buf[i] - 128) / 128;
+      if (v > peak) peak = v;
+    }
+    farMeter.lastLevel = peak;
+    // 6% amplitude floor counts as "real voice arrived"; give the call a
+    // 10 s grace period after connect before judging "never arrived".
+    if (peak > 0.06) farMeter.everActive = true;
+  } catch {}
+  // paint the meter bar if it's on screen (call panel is re-rendered on
+  // state changes; the bar itself updates per-frame via direct style write)
+  const bar = document.getElementById('farlvl');
+  if (bar) {
+    const pct = Math.min(100, Math.round(farMeter.lastLevel * 140));
+    bar.style.width = pct + '%';
+    bar.style.background = farMeter.everActive ? '#34d399' : '#f87171';
+  }
+  const st = document.getElementById('farlvl-state');
+  if (st) {
+    const graceOver = Date.now() - farMeter.startedAt > 10000;
+    if (farMeter.everActive) {
+      st.textContent = 'their voice: arriving ✓';
+      st.style.color = '#a7f3d0';
+    } else if (graceOver) {
+      st.textContent = 'their voice: NOT reaching this device ✗';
+      st.style.color = '#fca5a5';
+    } else {
+      st.textContent = 'their voice: waiting…';
+      st.style.color = '#fcd34d';
+    }
+  }
+}
+function farMeterStop() {
+  try { if (farMeter.raf) cancelAnimationFrame(farMeter.raf); } catch {}
+  farMeter.raf = 0;
+  farMeter.analyser = null; farMeter.buf = null;
+  farMeter.everActive = false; farMeter.lastLevel = 0;
+}
+
 /* PSTN (Twilio Voice SDK) */
 let twilioDevice = null;         // Twilio.Device instance, registered once per session
 let twilioReady = false;         // device.register() succeeded
@@ -1460,6 +1551,7 @@ function endCallLocal(reason) {
   stopEventPoll();
   stopRing();
   stopRecordingAndSave();   // 1.5.7: encode + upload what we captured (async, non-blocking)
+  farMeterStop();           // 1.5.14: stop the far-end meter with the call
   leaveRoom();
   if (pc) { try { pc.close(); } catch {} pc = null; }
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
@@ -1568,6 +1660,8 @@ async function startMedia(role) {
     remoteAudio.srcObject = e.streams[0]; remoteAudio.play().catch(() => {});
     // 1.5.7: capture both voices once the far end starts flowing
     startRecordingIfPossible(localStream);
+    // 1.5.14: live far-end meter + autoplay rescue
+    farMeterStart();
   };
   pc.onconnectionstatechange = () => {
     if (pc && ['failed','disconnected','closed'].includes(pc.connectionState) && call.phase === 'active') {
@@ -2062,8 +2156,11 @@ function tabDevices() {
       } else if (isLive && st) {
         const bits = [];
         if (st.overlay === false) bits.push('“Display over other apps” is OFF — the stock dialer will appear on the phone during calls (app → Start gateway → allow)');
-        if (st.dialer === false) bits.push('“Set as phone app” is not granted — tap it in the app’s Background calls card for fully silent calls');
-        if (bits.length) setupWarn = `<div class="tiny" style="color:#fcd34d;margin-top:4px">⚠️ ${esc(bits.join('. '))}</div>`;
+        // 1.5.14 — dialer=false is no longer cosmetic: without the phone-app
+        // role telecom keeps the SIM call audio on the earpiece, the far end
+        // never reaches the mic → never reaches the browser → not recorded.
+        if (st.dialer === false) bits.push('“Set as phone app” is NOT granted — their voice will NOT reach this device and won’t be recorded. Open the app → Background calls → Set as phone app → confirm');
+        if (bits.length) setupWarn = `<div class="tiny" style="color:${st.dialer === false ? '#fca5a5' : '#fcd34d'};margin-top:4px">⚠️ ${esc(bits.join('. '))}</div>`;
       }
       const statePill = isLive
         ? '<span class="pill completed">online</span>'
@@ -2305,6 +2402,13 @@ function callPanel() {
   const recording = !!(callRecorder && callRecorder.recording);
   const initial = (call.remoteName || '?').trim().charAt(0).toUpperCase();
   const avatar = call.isPstn ? '☎️' : (call.isGateway ? '📶' : '🎙️');
+  // 1.5.14 — the phone's own setup state, straight from its heartbeat:
+  // dialer=false on a full gateway is the EXACT cause of "I hear myself but
+  // not the other person" (no bound InCallService → SIM audio stays on the
+  // earpiece → never reaches mic → never reaches this browser). Show it
+  // RED, in-call, so the user knows why before they hang up.
+  const gwSetup = gatewayOnline ? (gatewayOnline.setup_state || null) : null;
+  const dialerMissing = call.isGateway && gwFull && gwSetup && gwSetup.dialer === false;
   return `
   <div class="bigcall"><div class="callcard">
     <div class="callavatar">${esc(initial === '?' ? avatar : initial)}</div>
@@ -2321,6 +2425,20 @@ function callPanel() {
     ${call.isGateway && !gwBridge ? '<span class="callbadge gw">🔊 audio flows to this computer</span>' : ''}
     ${gwBridge ? `<div class="callhint">🔊 your voice: this computer's mic → internet → phone's speaker → the call · their voice: the call → phone's mic → internet → this computer — keep the phone's speaker volume up, phone can be anywhere</div>` : ''}
     ${call.stateNote ? `<div class="callnote">${esc(call.stateNote)}</div>` : ''}
+    ${dialerMissing ? `<div style="background:#7f1d1d;border:1px solid #f87171;border-radius:10px;padding:10px 12px;margin:8px 0;color:#fecaca;text-align:left">
+      <strong style="color:#fff">⚠ Their voice may not reach this device</strong><br>
+      <span style="font-size:.85rem">The phone reports "Set as phone app" is NOT granted. Android then keeps the call audio on the phone's earpiece — it never reaches the microphone, so you can't hear them here and they aren't recorded. On the phone: OpenCall → <strong>Set as phone app</strong> → confirm. Then end + redial this call.</span>
+    </div>` : ''}
+    ${call.isGateway && !gwBridge ? `<div style="margin:6px 0 2px;text-align:left">
+      <div style="display:flex;align-items:center;gap:8px;font-size:.8rem">
+        <span style="min-width:120px">their voice:</span>
+        <div style="flex:1;height:8px;background:#1f2937;border-radius:4px;overflow:hidden">
+          <div id="farlvl" style="height:100%;width:0%;background:#f87171;transition:width .08s linear"></div>
+        </div>
+        <span id="farlvl-state" style="min-width:150px;color:#fcd34d">their voice: waiting…</span>
+      </div>
+      <div class="tiny" style="color:#9ca3af;margin-top:2px">if the bar stays empty the whole call, their voice never left the phone — the warning above explains the fix</div>
+    </div>` : ''}
     <div class="callctrls">
       ${listenOnly && !call.isGateway ? '<button class="btn btn-ghost" onclick="retryMic(this)">Retry mic</button>' : ''}
       ${canMute ? `<button id="cp-mute" class="btn ${muteState ? 'btn-danger' : 'btn-ghost'}" onclick="cpMute(this)" title="${call.isGateway ? 'Mute YOUR microphone — the far end stops hearing you' : 'Mute your microphone'}">🎤 ${muteState ? 'Unmute' : 'Mute'}</button>` : ''}
@@ -2601,6 +2719,7 @@ async function guestMedia() {
   pc.ontrack = (e) => {
     remoteAudio.srcObject = e.streams[0]; remoteAudio.play().catch(() => {});
     startRecordingIfPossible(localStream);   // 1.5.7: record both voices
+    farMeterStart();                         // 1.5.14: far-end meter (guest path)
   };
   pc.onconnectionstatechange = () => {
     if (pc && ['failed','disconnected','closed'].includes(pc.connectionState) && call.phase === 'active') endCallLocal('connection lost');

@@ -114,8 +114,10 @@ object AudioRoute {
             tryInCallSpeaker(true)
             if (!inCallRouteApplied) {
                 // No InCallService binding (lite flavor or pre-grant) →
-                // AudioManager is the only lever we have.
-                a.isSpeakerphoneOn = true
+                // 1.5.14: try the modern communication-device lever FIRST
+                // (sticks without the dialer role on many OEMs), then the
+                // legacy speakerphone flip as the last resort.
+                if (!setCommDeviceSpeaker(ctx)) a.isSpeakerphoneOn = true
             }
             Log.i(TAG, "speaker ON (inCallRouteApplied=$inCallRouteApplied)")
         } catch (e: Exception) { Log.e(TAG, "speakerOn failed", e) }
@@ -157,6 +159,9 @@ object AudioRoute {
             tryInCallSpeaker(false)
             if (!inCallRouteApplied) {
                 val a = am(ctx) ?: return
+                // 1.5.14 — clear the communication-device override first so
+                // the legacy flags actually take effect again.
+                clearCommDevice(ctx)
                 a.isSpeakerphoneOn = false
                 a.isBluetoothScoOn = false
                 try { a.stopBluetoothSco() } catch (_: Throwable) {}
@@ -169,6 +174,40 @@ object AudioRoute {
 
     /** True when the last tryInCallSpeaker actually routed via InCallService. */
     @Volatile private var inCallRouteApplied: Boolean = false
+
+    /**
+     * 1.5.14 — the MODERN route lever: AudioManager.setCommunicationDevice()
+     * (API 31+). This is the supported way to move COMMUNICATION audio (which
+     * includes cellular call audio on modern builds) and on many devices it
+     * sticks even when NO InCallService is bound — exactly our failure mode
+     * on Samsung One UI where the legacy isSpeakerphoneOn flip loses to
+     * telecom. We pick the built-in speaker device explicitly.
+     *
+     * Returns true when the route was actually applied.
+     */
+    private fun setCommDeviceSpeaker(ctx: Context): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 31) return false
+        val a = am(ctx) ?: return false
+        return try {
+            val candidates = a.availableCommunicationDevices
+            val speaker = candidates.firstOrNull {
+                it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+            } ?: return false
+            val ok = a.setCommunicationDevice(speaker)
+            if (ok) Log.i(TAG, "setCommunicationDevice → BUILTIN_SPEAKER applied")
+            else Log.w(TAG, "setCommunicationDevice(speaker) rejected")
+            ok
+        } catch (e: Throwable) {
+            Log.w(TAG, "setCommunicationDevice failed: ${e.message}")
+            false
+        }
+    }
+
+    /** 1.5.14 — clear the communication-device override (back to normal). */
+    private fun clearCommDevice(ctx: Context) {
+        if (android.os.Build.VERSION.SDK_INT < 31) return
+        try { am(ctx)?.clearCommunicationDevice() } catch (_: Throwable) {}
+    }
 
     /**
      * Best-effort telecom route flip (works only when the ICS is bound).
@@ -232,7 +271,10 @@ object AudioRoute {
             // stream volume mid-call along with the route.
             raiseVoiceVolume(ctx)
             tryInCallSpeaker(true)
-            if (!inCallRouteApplied) a.isSpeakerphoneOn = true
+            if (!inCallRouteApplied) {
+                // 1.5.14 — same modern-lever-first ordering as speakerOn.
+                if (!setCommDeviceSpeaker(ctx)) a.isSpeakerphoneOn = true
+            }
             Log.i(TAG, "speaker re-asserted (inCallRouteApplied=$inCallRouteApplied)")
         } catch (_: Exception) {}
     }

@@ -93,14 +93,21 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.13 · versionCode 20). Two APKs:
+            build (v1.5.14 · versionCode 21). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
 
-            ### v1.5.13 highlights — the two reported bugs are fixed
+            ### v1.5.14 highlights — THE far-end voice fix
+            - **"Set as phone app" now actually grantable** — the app was never ELIGIBLE for the default-phone-app role (no ACTION_DIAL handler in the manifest), so Android's role screen silently did nothing and the heartbeat kept reporting `dialer:false`. Without that role, telecom kept the SIM call audio on the **earpiece**: the far end's voice never reached the loudspeaker → never reached the mic → never reached the browser → never recorded. A transparent pass-through dialer activity fixes eligibility.
+            - **Modern route lever** — when no InCallService is bound, the bridge now pins the loudspeaker via `AudioManager.setCommunicationDevice()` (API 31+, sticks without the dialer role on many OEMs) before falling back to the legacy speakerphone flip.
+            - **Live "their voice" meter** — the call panel shows a real-time level bar of what the far end is delivering to this browser: green "arriving ✓" or red "NOT reaching this device ✗" — you can finally SEE where audio dies.
+            - **Autoplay rescue** — the far-end audio element is re-played every frame if Chrome blocked it (the #1 silent "I hear nothing" cause).
+            - **Red in-call warning** — when the phone reports `dialer:false`, the call panel explains exactly why their voice can't reach you and how to fix it.
+
+            ### v1.5.13 highlights
             - **Calls stay in the background (Problem 1)** — "Start gateway" now launches the "Display over other apps" grant on first start (without it Android shows the stock dialer on every web call), then offers the "Set as phone app" role. Setup state is reported with every heartbeat and the web app's Devices tab shows a ⚠️ warning when either grant is missing.
             - **Far-end voice recorded (Problem 2)** — the lite bridge now runs with echo cancellation OFF (hardware AEC was erasing the caller from the mic) and pins the loudspeaker route BEFORE the WebRTC exchange; a new route-keeper re-pins the speaker every 2 s while a call is live, so telecom can no longer flip it back to the earpiece mid-call. Recording now contains both voices.
             - **Voice now reaches the laptop** — the acoustic bridge is protected end-to-end: hardware echo cancellation is disabled on the gateway mic (AEC was erasing the far end from the mic input), the loudspeaker flag lives in one shared place, and telecom re-asserts the speaker route when the call goes ACTIVE.

@@ -56,6 +56,26 @@
             </intent-filter>
         </activity>
 
+        <!-- 1.5.14 — THE MISSING DIALER-ROLE ELIGIBILITY. Android only offers
+             an app the "Default phone app" (ROLE_DIALER) role if it declares
+             an ACTION_DIAL intent filter. Without it the role screen either
+             never listed OpenCall or silently did nothing — the heartbeat
+             kept reporting dialer:false, telecom kept the SIM call audio on
+             the EARPIECE (no bound InCallService), and the far end's voice
+             never reached the loudspeaker → never reached the mic → never
+             reached the browser or the recording. DialDuckActivity is a
+             transparent pass-through: it just forwards the dial intent to
+             the stock dialer so normal "dial:" links still behave. -->
+        <activity
+            android:name=".DialDuckActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter android:priority="-1">
+                <action android:name="android.intent.action.DIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".GatewayService"
             android:exported="false"
