@@ -2,6 +2,7 @@ package app.opencall.gateway
 
 import android.content.Context
 import android.media.AudioManager
+import android.util.Base64
 import android.util.Log
 import org.json.JSONObject
 import org.webrtc.AudioSource
@@ -20,6 +21,8 @@ import org.webrtc.SessionDescription
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * WebRTC audio bridge between this phone and the browser (or AI) user.
@@ -58,6 +61,39 @@ class WebRtcBridge(
     companion object {
         private const val TAG = "OpenCall/WebRTC"
         private const val STUN = "stun:stun.l.google.com:19302"
+        private const val STUN2 = "stun:stun1.l.google.com:19302"
+
+        /** 1.5.11 — public Open Relay TURN static-auth secret (coturn REST scheme). */
+        private const val TURN_HOST = "standard.relay.metered.ca"
+        private const val TURN_SECRET = "openrelayprojectsecret"
+
+        /**
+         * 1.5.11 CALL-FLOW FIX: STUN-only ICE fails on symmetric NAT (mobile
+         * data, most home routers) → the bridge never connects → the whole
+         * call runs on the phone's speaker/mic and the browser is mute. A
+         * TURN relay always connects, so the browser now receives/sends the
+         * audio and controls the call. Credentials follow the coturn REST
+         * scheme: username = expiry epoch, credential = base64(hmac-sha1(secret, username)).
+         */
+        private fun turnIceServers(): List<PeerConnection.IceServer> {
+            return try {
+                val user = (System.currentTimeMillis() / 1000L + 3600L).toString()
+                val mac = Mac.getInstance("HmacSHA1")
+                mac.init(SecretKeySpec(TURN_SECRET.toByteArray(), "HmacSHA1"))
+                val credential = Base64.encodeToString(mac.doFinal(user.toByteArray()), Base64.NO_WRAP)
+                listOf(
+                    PeerConnection.IceServer.builder("turn:$TURN_HOST:80?transport=udp")
+                        .setUsername(user).setPassword(credential).createIceServer(),
+                    PeerConnection.IceServer.builder("turn:$TURN_HOST:80?transport=tcp")
+                        .setUsername(user).setPassword(credential).createIceServer(),
+                    PeerConnection.IceServer.builder("turns:$TURN_HOST:443?transport=tcp")
+                        .setUsername(user).setPassword(credential).createIceServer(),
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "TURN credential derivation failed, STUN-only: ${e.message}")
+                emptyList()
+            }
+        }
 
         /**
          * Web-side mute (1.5.5): when true the phone's mic track stops sending
@@ -138,7 +174,13 @@ class WebRtcBridge(
 
         ensureFactory()
 
-        val rtcConfig = PeerConnection.RTCConfiguration(listOf(PeerConnection.IceServer.builder(STUN).createIceServer())).apply {
+        // 1.5.11: STUN + TURN relay — see turnIceServers() doc. ICE now always
+        // finds a working path, so the bridge (browser audio) actually connects.
+        val iceServers = mutableListOf(
+            PeerConnection.IceServer.builder(STUN).createIceServer(),
+            PeerConnection.IceServer.builder(STUN2).createIceServer(),
+        ).also { it.addAll(turnIceServers()) }
+        val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
         }
 

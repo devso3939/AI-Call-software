@@ -83,7 +83,7 @@
     <h2>Install OpenCall on Android</h2>
     <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.10a · Android 8.0+</span>
+      <span class="badge">✓ v1.5.11 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
       <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
@@ -114,7 +114,10 @@
   </div>
 
   <div class="sec">
-    <h3>🟢 What's new in v1.5.10a</h3>
+    <h3>🟢 What's new in v1.5.11</h3>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.11 — the two big fixes:</strong> (1) <strong>Web app no longer blinks</strong> — the page stopped rebuilding itself every time your phone sent a heartbeat; "last seen" now refreshes silently in place. (2) <strong>Audio bridge now actually connects</strong> — both the web app and the phone app previously relied on STUN only, which fails on most home Wi-Fi and mobile data, so the call audio stayed on the phone. A TURN relay is now built in on both sides, so the browser sends and receives the call audio and <strong>the call runs from your computer</strong>: end it, mute it, hold it from the web panel. If the bridge ever fails to connect, the web app now tells you honestly instead of staying silent.</p>
+    </div>
     <div class="ok" style="margin-bottom:10px">
       <p><strong>v1.5.10a regression fixes:</strong> mute state no longer leaks between calls (call #2 always starts unmuted, in sync on phone + web); the Mute button on listen-only gateway calls shows an honest hint instead of a fake state; call-panel buttons keep their highlight in sync. The call mask is now <strong>call-shape aware</strong>: it says "Waiting for the computer to take this call…" at first, switches to "call running from your computer" only when the bridge is real, and switches to "Call active on this phone" if you answer on the handset — it never lies about where the call runs.</p>
     </div>

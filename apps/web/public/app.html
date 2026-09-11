@@ -434,6 +434,7 @@ let pollTimer = null;
 let ringTimeout = null;
 let statsTimer = null;
 let bootPoll = null;
+let bridgeWatchdog = null;   // 1.5.11: honest "bridge failed" feedback for gateway calls
 let realtimeReady = false;
 let muteState = false;
 let gatewayMute = false;         // web→phone mute (queue_gateway_command), distinct from browser mic
@@ -733,6 +734,17 @@ function uiTick() {
       if (mins) mins.textContent = String(Math.max(0, Math.ceil((15 * 60000 - (Date.now() - pairingAt)) / 60000)));
     }
   }
+  // device "last seen" notes (Devices tab) — targeted text update, never renderApp().
+  // The phone heartbeats every few seconds; refreshing these in place keeps the
+  // display live WITHOUT the full DOM rebuild that caused the visible blink.
+  if (tab === 'devices' && gatewayDevices.length) {
+    for (const d of gatewayDevices) {
+      const el = document.querySelector(`[data-lasts="${d.id}"]`);
+      if (!el || !d.last_seen_at) continue;
+      const isLive = deviceFresh(d, Date.now() - 120000);
+      el.textContent = isLive ? `last seen ${relTime(d.last_seen_at)}` : `last seen ${relTime(d.last_seen_at)} — not responding`;
+    }
+  }
 }
 
 /* ---------------- PSTN: real phone calls (Twilio Voice) ----------------
@@ -857,19 +869,26 @@ async function refreshDevices() {
   const { data, error } = await sb.rpc('list_gateway_devices');
   if (!error && data) {
     const next = data;
-    // BLINK FIX: the Android heartbeats every few seconds → a gateway_devices
+    // BLINK FIX (v1.5.11): the Android heartbeats every few seconds → a gateway_devices
     // realtime UPDATE fires → refreshDevices() re-rendered the whole app even
-    // when nothing visible changed (battery % and last_seen drift constantly).
-    // Re-render only when the UI-visible subset actually changed.
-    const vis = d => ({ id: d.id, name: d.name, sim: d.sim_number, batt: d.battery, ver: d.app_version, seen: d.last_seen_at });
-    const visEq = (a, b) => a.length === b.length && a.every((x, i) => { const y = b[i]; return x.id === y.id && x.name === y.name && x.sim === y.sim && x.batt === y.batt && x.ver === y.ver && x.seen === y.seen; });
+    // when nothing visible changed. `last_seen_at` was part of the visibility
+    // subset — it drifts on EVERY heartbeat, so visEq() was ALWAYS false and
+    // the app re-rendered every 4-5 s (the "blink"). Online/offline uses the
+    // 2-minute deviceFresh() cutoff, which does not need the raw timestamp.
+    // Last-seen text now updates on the next natural re-render instead.
+    const vis = d => ({ id: d.id, name: d.name, sim: d.sim_number, batt: d.battery, ver: d.app_version });
+    const visEq = (a, b) => a.length === b.length && a.every((x, i) => { const y = b[i]; return x.id === y.id && x.name === y.name && x.sim === y.sim && x.batt === y.batt && x.ver === y.ver; });
     const nextVis = next.map(vis);
     const prevVis = gatewayDevices.map(vis);
     if (!visEq(nextVis, prevVis)) { gatewayDevices = next; }
     // compute effective online with heartbeat-freshness (see deviceFresh below)
     const cutoff = Date.now() - 120000;
     const online = next.filter(d => deviceFresh(d, cutoff));
-    const bestOnline = online.sort((a, b) => new Date(b.last_seen_at) - new Date(a.last_seen_at))[0] || null;
+    // STICKY PICK: prefer the device we already chose as long as it stays online —
+    // with 2+ paired devices each heartbeat would otherwise rotate "newest
+    // last_seen" between them and re-render the app every few seconds.
+    const stillOnline = online.find(d => d.id === (gatewayOnline?.id || null)) || null;
+    const bestOnline = stillOnline || online.sort((a, b) => new Date(b.last_seen_at) - new Date(a.last_seen_at))[0] || null;
     const gwChanged = (gatewayOnline?.id || null) !== (bestOnline?.id || null);
     gatewayOnline = bestOnline;
     // lite (app.opencall.bridge) = guided tap-to-dial / tap-to-send handoff;
@@ -1421,6 +1440,7 @@ async function hangup() {
 
 function endCallLocal(reason) {
   clearTimeout(ringTimeout); ringTimeout = null;
+  if (bridgeWatchdog) { clearTimeout(bridgeWatchdog); bridgeWatchdog = null; }
   clearInterval(statsTimer); statsTimer = null;
   stopEventPoll();
   stopRing();
@@ -1441,8 +1461,46 @@ function endCallLocal(reason) {
   showToast(dur > 5 ? `Call ${reason} · lasted ${fmtDur(dur)}` : `Call ${reason}`);
 }
 
-/* ---------------- WebRTC (real P2P audio) ---------------- */
-const RTC_CONFIG = { iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ] };
+/* ---------------- WebRTC (real P2P audio) ----------------
+   1.5.11 CALL-FLOW FIX — why calls "happened on the phone":
+   both sides previously had ONLY a STUN server. On symmetric NAT (most home
+   routers and especially mobile data) STUN cannot punch through, ICE fails,
+   the WebRTC bridge never connects → the browser gets no audio, the phone's
+   speaker+mic carry the whole call and the stock dialer pops up. Adding a
+   TURN relay (always connects regardless of NAT) makes the bridge work and
+   keeps the call fully web-controlled. Credentials are the public Open Relay
+   static-auth pair (coturn REST scheme: username = expiry epoch,
+   credential = base64(hmac-sha1(secret, username))), computed right here. */
+const OPENRELAY_SECRET = 'openrelayprojectsecret';
+async function hmacSha1B64(secret, msg) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg));
+  return btoa(String.fromCharCode(...new Uint8Array(sig)));
+}
+let turnCredsPromise = null;
+function getTurnCreds() {
+  // cache for the session; derived with a 1 h expiry, safe to reuse per call
+  if (!turnCredsPromise) {
+    turnCredsPromise = (async () => {
+      const user = String(Math.floor(Date.now() / 1000) + 3600);
+      const credential = await hmacSha1B64(OPENRELAY_SECRET, user);
+      return { username: user, credential };
+    })();
+  }
+  return turnCredsPromise;
+}
+async function buildRtcConfig() {
+  const iceServers = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+  try {
+    const c = await getTurnCreds();
+    iceServers.push(
+      { urls: ['turn:standard.relay.metered.ca:80?transport=udp', 'turn:standard.relay.metered.ca:80?transport=tcp'], username: c.username, credential: c.credential },
+      { urls: 'turns:standard.relay.metered.ca:443?transport=tcp', username: c.username, credential: c.credential },
+    );
+  } catch {}
+  return { iceServers, iceCandidatePoolSize: 4 };
+}
+const RTC_CONFIG = { iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ] };   // fallback if buildRtcConfig is somehow not used
 
 /* mic acquisition with an honest timeout: a hung device must not stall the call forever */
 function getMic(ms = 15000) {
@@ -1488,7 +1546,7 @@ async function startMedia(role) {
     call.stateNote = 'no microphone — listen-only (you can hear them, they cannot hear you)';
   }
   renderApp();
-  pc = new RTCPeerConnection(RTC_CONFIG);
+  pc = new RTCPeerConnection(await buildRtcConfig());
   if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
   else pc.addTransceiver('audio', { direction: 'recvonly' });   // valid SDP so listen-only still connects
   pc.ontrack = (e) => {
@@ -1501,6 +1559,26 @@ async function startMedia(role) {
       endCallLocal('connection lost');
     }
   };
+  /* 1.5.11 BRIDGE WATCHDOG — honest feedback when the audio bridge never
+     connects. Previously ICE failed silently: the browser stayed mute, the
+     phone's speaker+mic carried the whole call, and it looked like the call
+     was "running on the phone". Now the user is told exactly what happened.
+     Only for gateway calls (internet/PSTN connect differently). */
+  if (call.isGateway && typeof bridgeWatchdog !== 'number') {
+    bridgeWatchdog = setTimeout(() => {
+      bridgeWatchdog = null;
+      if (!pc || call.phase === 'idle') return;
+      if (pc.connectionState === 'connected') return;
+      if (pc.connectionState === 'checking') {
+        call.stateNote = 'audio bridge still connecting — check that the phone shows "call running from your computer", and that both devices have internet';
+        renderApp();
+      } else if (pc.connectionState === 'new' || pc.connectionState === 'failed') {
+        call.stateNote = 'audio bridge did not connect — the call is on your phone only. End it and retry; both devices need working internet.';
+        renderApp();
+        showToast('⚠ Audio bridge failed — call audio is NOT in this browser');
+      }
+    }, 18000);
+  }
   pc.onicecandidate = (e) => {
     // non-trickle main path: candidates ride inside offer/answer SDP.
     // late candidates still go out, best-effort:
@@ -1964,12 +2042,14 @@ function tabDevices() {
       const seenNote = d.last_seen_at
         ? (isLive ? `last seen ${relTime(d.last_seen_at)}` : `last seen ${relTime(d.last_seen_at)} — not responding`)
         : 'never reported in';
+      // the "last seen" text refreshes in place via uiTick — it must not be
+      // part of the re-render decision or every heartbeat blinks the app
       return `
       <div class="contact">
         <div>
           <strong>${esc(d.name || 'Android phone')}</strong> ${flBadge}
           <div class="tiny mint">${esc(d.sim_number || 'SIM number unknown — set it in the phone app (Bridge: “Save SIM number”)')}</div>
-          <div class="tiny">battery ${d.battery != null ? esc(d.battery) + '%' : '—'} · v${esc(d.app_version || '?')} · ${seenNote}</div>
+          <div class="tiny">battery ${d.battery != null ? esc(d.battery) + '%' : '—'} · v${esc(d.app_version || '?')} · <span data-lasts="${d.id}">${seenNote}</span></div>
           ${gatewayNote}
         </div>
         <div class="row">
@@ -2485,7 +2565,7 @@ async function guestMedia() {
     call.stateNote = 'no microphone — listen-only (you can hear Alice, she cannot hear you)';
     renderGuestActive();
   }
-  pc = new RTCPeerConnection(RTC_CONFIG);
+  pc = new RTCPeerConnection(await buildRtcConfig());
   if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
   else pc.addTransceiver('audio', { direction: 'recvonly' });   // valid SDP so listen-only still connects
   pc.ontrack = (e) => {
