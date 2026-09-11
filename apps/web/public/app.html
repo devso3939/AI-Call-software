@@ -856,10 +856,22 @@ function handleTwilioIncoming(c) {
 async function refreshDevices() {
   const { data, error } = await sb.rpc('list_gateway_devices');
   if (!error && data) {
-    gatewayDevices = data;
+    const next = data;
+    // BLINK FIX: the Android heartbeats every few seconds → a gateway_devices
+    // realtime UPDATE fires → refreshDevices() re-rendered the whole app even
+    // when nothing visible changed (battery % and last_seen drift constantly).
+    // Re-render only when the UI-visible subset actually changed.
+    const vis = d => ({ id: d.id, name: d.name, sim: d.sim_number, batt: d.battery, ver: d.app_version, seen: d.last_seen_at });
+    const visEq = (a, b) => a.length === b.length && a.every((x, i) => { const y = b[i]; return x.id === y.id && x.name === y.name && x.sim === y.sim && x.batt === y.batt && x.ver === y.ver && x.seen === y.seen; });
+    const nextVis = next.map(vis);
+    const prevVis = gatewayDevices.map(vis);
+    if (!visEq(nextVis, prevVis)) { gatewayDevices = next; }
+    // compute effective online with heartbeat-freshness (see deviceFresh below)
     const cutoff = Date.now() - 120000;
-    const online = data.filter(d => d.online && d.last_seen_at && (new Date(d.last_seen_at).getTime()) > cutoff);
-    gatewayOnline = online.sort((a, b) => new Date(b.last_seen_at) - new Date(a.last_seen_at))[0] || null;
+    const online = next.filter(d => deviceFresh(d, cutoff));
+    const bestOnline = online.sort((a, b) => new Date(b.last_seen_at) - new Date(a.last_seen_at))[0] || null;
+    const gwChanged = (gatewayOnline?.id || null) !== (bestOnline?.id || null);
+    gatewayOnline = bestOnline;
     // lite (app.opencall.bridge) = guided tap-to-dial / tap-to-send handoff;
     // full (app.opencall.gateway2) = automatic dialing + SMS relay
     const v = (gatewayOnline && gatewayOnline.app_version) || '';
@@ -869,15 +881,15 @@ async function refreshDevices() {
     // queue_gateway_command allowlist is the real gate — this just keeps
     // the UI honest for genuinely too-old phones.
     gatewayFull = !v.includes('-lite') && !v.startsWith('1.5.4') && !v.startsWith('1.5.3') && v !== '';
-    if (gatewayOnline && pairingCode) { pairingCode = null; showToast('Android device paired ✓'); }
+    if (gatewayOnline && pairingCode) { pairingCode = null; showToast('Android device paired ✓'); renderApp(); return; }
+    if (!visEq(nextVis, prevVis) || gwChanged) renderApp();   // re-render only on real change
   }
-  if (me) renderApp();
 }
 
 async function refreshSms() {
   const { data } = await sb.from('sms_messages').select('*').order('created_at', { ascending: false }).limit(50);
-  smsList = data || [];
-  if (me) renderApp();
+  const next = data || [];
+  if (snap(next) !== snap(smsList)) { smsList = next; if (me) renderApp(); }   // re-render only on real change
 }
 
 async function sendSms() {
@@ -1534,6 +1546,22 @@ function toggleMute(btn) {
 }
 
 /* ---------------- history / contacts / sweep ---------------- */
+/* BLINK FIX: background refreshers (history / sms / devices / contacts) used to
+   call renderApp() unconditionally after every poll or realtime heartbeat.
+   renderApp() tears down the whole DOM and rebuilds it — the page visibly
+   "blinked" every time the Android heartbeated (every few seconds) because the
+   gateway_devices UPDATE handler called refreshDevices() → renderApp().
+   These helpers snapshot the data; a re-render happens ONLY when content truly
+   changed. Deep-compare is safe here: rows are small (≤50 items). */
+function snap(v) { try { return JSON.stringify(v); } catch { return String(v); } }
+/* STALE-DEVICE FIX: the DB `online` flag only flips false on a clean unregister.
+   If the app is deleted / killed / phone is off, the row stays online=true forever.
+   A device counts as ONLINE only when the DB flag is true AND the heartbeat is
+   fresh (≤ 2 min). Everything else is rendered honestly as offline. */
+function deviceFresh(d, cutoffMs) {
+  const seen = d.last_seen_at ? new Date(d.last_seen_at).getTime() : 0;
+  return !!d.online && seen > cutoffMs;
+}
 async function refreshHistory() {
   if (!me) return;
   const { data } = await sb.from('calls')
@@ -1541,8 +1569,8 @@ async function refreshHistory() {
     .or(`created_by.eq.${me.id},callee_id.eq.${me.id}`)
     .order('created_at', { ascending: false })
     .limit(30);
-  history = data || [];
-  renderApp();
+  const next = data || [];
+  if (snap(next) !== snap(history)) { history = next; renderApp(); }   // re-render only on real change
 }
 
 /* 1.5.7: signed-URL playback for a call recording (bucket is private) */
@@ -1580,8 +1608,8 @@ async function downloadRecording(callId, path) {
 
 async function refreshContacts() {
   const { data } = await sb.from('profiles').select('*').neq('id', me.id).order('display_name');
-  contacts = data || [];
-  renderApp();
+  const next = data || [];
+  if (snap(next) !== snap(contacts)) { contacts = next; renderApp(); }   // re-render only on real change
 }
 
 async function sweep() {
@@ -1918,15 +1946,23 @@ function tabDevices() {
         : fl === 'gateway'
           ? '<span class="pill completed">Gateway · automatic dial + SMS</span>'
           : '';
+      // STALE-DEVICE FIX: judge liveness by heartbeat freshness, not the raw DB flag
+      const isLive = deviceFresh(d, Date.now() - 120000);
+      const statePill = isLive
+        ? '<span class="pill completed">online</span>'
+        : '<span class="pill failed">offline</span>';
+      const seenNote = d.last_seen_at
+        ? (isLive ? `last seen ${relTime(d.last_seen_at)}` : `last seen ${relTime(d.last_seen_at)} — not responding`)
+        : 'never reported in';
       return `
       <div class="contact">
         <div>
           <strong>${esc(d.name || 'Android phone')}</strong> ${flBadge}
           <div class="tiny mint">${esc(d.sim_number || 'SIM number unknown — set it in the phone app (Bridge: “Save SIM number”)')}</div>
-          <div class="tiny">battery ${d.battery != null ? esc(d.battery) + '%' : '—'} · v${esc(d.app_version || '?')} · last seen ${relTime(d.last_seen_at)}</div>
+          <div class="tiny">battery ${d.battery != null ? esc(d.battery) + '%' : '—'} · v${esc(d.app_version || '?')} · ${seenNote}</div>
         </div>
         <div class="row">
-          <span class="pill ${d.online ? 'completed' : 'failed'}">${d.online ? 'online' : 'offline'}</span>
+          ${statePill}
           <button class="btn btn-ghost" onclick="unpairDevice('${d.id}')">Unpair</button>
         </div>
       </div>`; }).join('')}
