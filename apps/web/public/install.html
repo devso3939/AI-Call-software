@@ -83,7 +83,7 @@
     <h2>Install OpenCall on Android</h2>
     <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.12 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.13 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
       <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
@@ -114,7 +114,10 @@
   </div>
 
   <div class="sec">
-    <h3>🟢 What's new in v1.5.12</h3>
+    <h3>🟢 What's new in v1.5.13</h3>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.13 — the two reported bugs are fixed:</strong> (1) <strong>Calls stay in the background on the phone</strong> — "Start gateway" now walks you through the two grants Android needs (Display over other apps + Set as phone app) instead of leaving them optional; the web app's Devices tab shows a ⚠️ warning when either is missing. No more stock dialer popping up on the phone during calls. (2) <strong>Recordings capture both voices</strong> — the bridge flavor now disables hardware echo cancellation (it was erasing the caller from the mic) and forces the loudspeaker route; a route-keeper re-pins the speaker every 2 s during the call so telecom can't flip it back to the earpiece mid-call.</p>
+    </div>
     <div class="ok" style="margin-bottom:10px">
       <p><strong>v1.5.12 — your mic and speakers, over the internet:</strong> the web-app device's microphone is the call mic and its speakers play the caller — audio is transported over the <strong>internet</strong> (WebRTC with a TURN relay), so the phone can be in a completely different location. No Bluetooth pairing needed. The phone just dials from your SIM and relays audio through the internet tunnel — no phone dialer UI, no phone mic, no phone speaker. Talk, listen, mute, hold, end and record — all from the web app, and recordings capture both voices.</p>
     </div>

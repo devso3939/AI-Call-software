@@ -152,7 +152,12 @@ class BridgeService : Service() {
                         .put("p_secret", secret)
                         .putOpt("p_sim_number", DeviceStore.simNumber(this))
                         .putOpt("p_battery", readBattery())
-                        .put("p_app_version", appVersion()),
+                        .put("p_app_version", appVersion())
+                        // 1.5.13 — setup state (lite flavor: no dialer role, no
+                        // overlay). The web app uses "flavor":"bridge" to show
+                        // the "install the full gateway for background calls"
+                        // recommendation.
+                        .put("p_setup", JSONObject().put("flavor", "bridge")),
                 )
 
                 val claimed = Rpc.rpcRaw(
@@ -222,6 +227,11 @@ class BridgeService : Service() {
 
         // bridge joins NOW: when the user taps and the cellular call goes out,
         // the browser's offer is already answered — audio flows immediately.
+        // 1.5.12b — the acoustic hop only works on the LOUDSPEAKER: the far end
+        // must play out of the speaker for the mic to pick it up (and for the
+        // recorder to hear the caller). Route BEFORE the WebRTC exchange so the
+        // route is already pinned when the cellular call starts ringing.
+        AudioRoute.speakerOn(this)
         try {
             ensureBridge().joinAndAnswer(room, callId)
         } catch (e: Exception) {
@@ -279,6 +289,9 @@ class BridgeService : Service() {
         activeRoom = r
         activeCallId = callId
         awaitingHandoff = false
+        // 1.5.12b — inbound bridge: same acoustic-hop rule. Loudspeaker ON
+        // before the offer goes out, so the far end reaches the mic.
+        AudioRoute.speakerOn(this)
         try {
             ensureBridge().joinAndOffer(r, callId)
         } catch (e: Exception) {
@@ -413,9 +426,12 @@ class BridgeService : Service() {
                 DeviceStore.secret(this)!!,
                 onConnected = { runOnUiThread { onBridgeConnected() } },
                 onGone = { runOnUiThread { onBridgeGone() } },
-                // 1.5.8: lite is NOT an acoustic bridge — the mic carries the
-                // user's voice directly, so hardware AEC must stay ON here.
-                acousticBridge = false,
+                // 1.5.12b FIX: lite IS an acoustic bridge for cellular calls —
+                // the far end reaches the mic ONLY through the loudspeaker hop.
+                // Hardware AEC erases exactly that hop ("I can't hear the other
+                // person in the recording"), so it must be OFF here too. Echo is
+                // handled on the browser side (its speakers → its mic).
+                acousticBridge = true,
             )
         }
         return bridge!!

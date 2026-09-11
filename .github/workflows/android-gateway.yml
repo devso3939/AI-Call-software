@@ -93,14 +93,16 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.8 · versionCode 14). Two APKs:
+            build (v1.5.13 · versionCode 20). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
 
-            ### v1.5.8 highlights
+            ### v1.5.13 highlights — the two reported bugs are fixed
+            - **Calls stay in the background (Problem 1)** — "Start gateway" now launches the "Display over other apps" grant on first start (without it Android shows the stock dialer on every web call), then offers the "Set as phone app" role. Setup state is reported with every heartbeat and the web app's Devices tab shows a ⚠️ warning when either grant is missing.
+            - **Far-end voice recorded (Problem 2)** — the lite bridge now runs with echo cancellation OFF (hardware AEC was erasing the caller from the mic) and pins the loudspeaker route BEFORE the WebRTC exchange; a new route-keeper re-pins the speaker every 2 s while a call is live, so telecom can no longer flip it back to the earpiece mid-call. Recording now contains both voices.
             - **Voice now reaches the laptop** — the acoustic bridge is protected end-to-end: hardware echo cancellation is disabled on the gateway mic (AEC was erasing the far end from the mic input), the loudspeaker flag lives in one shared place, and telecom re-asserts the speaker route when the call goes ACTIVE.
             - **Call popup, not a bottom strip** — every call state (dialing, ringing, active, incoming) renders as a real floating call card with avatar, big timer, quality row, controls, DTMF pad and a full-width End button.
             - **SMS status fixed** — the radio-level sent confirmation receiver is now registered, so History stops showing "queued" for messages that actually went out.

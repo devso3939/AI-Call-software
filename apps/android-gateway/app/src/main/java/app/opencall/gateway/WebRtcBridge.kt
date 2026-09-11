@@ -125,6 +125,8 @@ class WebRtcBridge(
     /** true while we're the OFFERER (inbound bridge); peer's 'answer' then completes our SRD. */
     @Volatile private var isOfferer: Boolean = false
     private var pollThread: Thread? = null
+    /** 1.5.12b — re-pins the speaker route every 2 s while the bridge is live. */
+    private var routeKeeper: Thread? = null
     @Volatile private var closed: Boolean = false
 
     private val egl: EglBase = EglBase.create()
@@ -268,6 +270,23 @@ class WebRtcBridge(
                 if (!closed) Log.e(TAG, "signal loop crashed", e)
             }
         }.also { it.name = "oc-signaling"; it.start() }
+
+        // 1.5.12b — ROUTE KEEPER: the far end reaches the mic ONLY through the
+        // loudspeaker. Telecom/OEM audio stacks re-flip the route to earpiece
+        // seconds AFTER the call goes ACTIVE (seen at +3s…+15s), which silently
+        // kills the far-end voice — and the recording. The one-shot re-asserts
+        // (+350ms/+1500ms) kept losing that race. While the bridge is live, a
+        // lightweight keeper re-pins the speaker every 2 s. Cheap (a AudioManager
+        // + reflection read), bounded to the bridge's lifetime.
+        routeKeeper = Thread {
+            try {
+                while (!closed && callId != null) {
+                    Thread.sleep(2000)
+                    if (closed) break
+                    AudioRoute.reassertSpeaker(ctx)
+                }
+            } catch (_: InterruptedException) {}
+        }.also { it.name = "oc-routekeeper"; it.isDaemon = true; it.start() }
 
         // 1.5.10a — the bridge is real: flip the CallMask copy from "waiting
         // for the computer…" to "call running from your computer" (full
@@ -419,6 +438,10 @@ class WebRtcBridge(
         callId?.let { DeviceStore.saveSigSeq(ctx, it, sigSeq) }
         callId = null
         pollThread = null
+        // 1.5.12b — stop the route keeper BEFORE speakerOff so it can't
+        // re-pin the speaker after we've released it.
+        try { routeKeeper?.interrupt() } catch (_: Exception) {}
+        routeKeeper = null
         AudioRoute.speakerOff(ctx)
         // 1.5.10a — bridge gone: if the cellular call is still active the
         // mask copy reverts to the handset wording (no-op on lite flavor).

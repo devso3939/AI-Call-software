@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
@@ -143,7 +144,10 @@ class GatewayService : Service() {
                         .put("p_secret", secret)
                         .putOpt("p_battery", battery)
                         .put("p_app_version", appVersion())
-                        .putOpt("p_sim_number", DeviceStore.simNumber(this)),
+                        .putOpt("p_sim_number", DeviceStore.simNumber(this))
+                        // 1.5.13 — setup state so the web app can warn when the
+                        // silent-dialer prerequisites are missing (overlay, role).
+                        .put("p_setup", setupState()),
                 )
 
                 // 2) claim commands (returns jsonb array — use rpcRaw!)
@@ -424,6 +428,36 @@ class GatewayService : Service() {
     private fun appVersion(): String = try {
         packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
     } catch (_: Exception) { "?" }
+
+    /**
+     * 1.5.13 — setup state reported with every heartbeat so the web app can
+     * warn when the silent-dialer prerequisites are missing. Without the
+     * overlay permission (and ideally the phone-app role) Android shows the
+     * stock dialer UI during gateway calls — the exact "manual call" bug.
+     * MainActivity writes the same snapshot to prefs; we recompute the
+     * live values here rather than trusting a possibly stale cache.
+     */
+    private fun setupState(): JSONObject = try {
+        val tm = getSystemService(Context.TELECOM_SERVICE) as? android.telecom.TelecomManager
+        val role = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            tm?.defaultDialerPackage == packageName
+        } else false
+        val om = getSystemService(Context.APP_OPS_SERVICE) as? android.app.AppOpsManager
+        val mode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P && om != null) {
+            om.unsafeCheckOpNoThrow(
+                android.app.AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW,
+                android.os.Process.myUid(), packageName)
+        } else null
+        val overlay = if (mode != null) mode == android.app.AppOpsManager.MODE_ALLOWED
+                      else Settings.canDrawOverlays(this)
+        JSONObject()
+            .put("flavor", "gateway")
+            .put("overlay", overlay)
+            .put("dialer", role)
+            .put("agentMode", prefs.getBoolean("agentMode", false))
+    } catch (_: Exception) {
+        JSONObject().put("flavor", "gateway")
+    }
 
     private fun sleep(ms: Long) {
         try { Thread.sleep(ms) } catch (_: InterruptedException) {}

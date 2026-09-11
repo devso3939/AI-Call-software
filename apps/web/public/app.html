@@ -886,8 +886,8 @@ async function refreshDevices() {
     // the app re-rendered every 4-5 s (the "blink"). Online/offline uses the
     // 2-minute deviceFresh() cutoff, which does not need the raw timestamp.
     // Last-seen text now updates on the next natural re-render instead.
-    const vis = d => ({ id: d.id, name: d.name, sim: d.sim_number, batt: d.battery, ver: d.app_version });
-    const visEq = (a, b) => a.length === b.length && a.every((x, i) => { const y = b[i]; return x.id === y.id && x.name === y.name && x.sim === y.sim && x.batt === y.batt && x.ver === y.ver; });
+    const vis = d => ({ id: d.id, name: d.name, sim: d.sim_number, batt: d.battery, ver: d.app_version, setup: JSON.stringify(d.setup_state || null) });
+    const visEq = (a, b) => a.length === b.length && a.every((x, i) => { const y = b[i]; return x.id === y.id && x.name === y.name && x.sim === y.sim && x.batt === y.batt && x.ver === y.ver && x.setup === y.setup; });
     const nextVis = next.map(vis);
     const prevVis = gatewayDevices.map(vis);
     if (!visEq(nextVis, prevVis)) { gatewayDevices = next; }
@@ -2051,6 +2051,20 @@ function tabDevices() {
         : '';
       // STALE-DEVICE FIX: judge liveness by heartbeat freshness, not the raw DB flag
       const isLive = deviceFresh(d, Date.now() - 120000);
+      // 1.5.13 — SETUP-STATE WARNINGS from the phone's heartbeat:
+      //  • flavor "bridge" (lite APK) → calls can't run fully in the background
+      //  • overlay=false → the stock dialer WILL pop up on the phone during calls
+      //  • dialer=false → recommended for the silent call-mask path
+      const st = d.setup_state || null;
+      let setupWarn = '';
+      if (fl === 'bridge') {
+        setupWarn = `<div class="tiny" style="color:#fca5a5;margin-top:4px">⚠️ Bridge (lite) app detected — calls show a tap-to-dial notification on the phone. For fully background calls install <strong>opencall-gateway.apk</strong> from the install page.</div>`;
+      } else if (isLive && st) {
+        const bits = [];
+        if (st.overlay === false) bits.push('“Display over other apps” is OFF — the stock dialer will appear on the phone during calls (app → Start gateway → allow)');
+        if (st.dialer === false) bits.push('“Set as phone app” is not granted — tap it in the app’s Background calls card for fully silent calls');
+        if (bits.length) setupWarn = `<div class="tiny" style="color:#fcd34d;margin-top:4px">⚠️ ${esc(bits.join('. '))}</div>`;
+      }
       const statePill = isLive
         ? '<span class="pill completed">online</span>'
         : '<span class="pill failed">offline</span>';
@@ -2065,6 +2079,7 @@ function tabDevices() {
           <strong>${esc(d.name || 'Android phone')}</strong> ${flBadge}
           <div class="tiny mint">${esc(d.sim_number || 'SIM number unknown — set it in the phone app (Bridge: “Save SIM number”)')}</div>
           <div class="tiny">battery ${d.battery != null ? esc(d.battery) + '%' : '—'} · v${esc(d.app_version || '?')} · <span data-lasts="${d.id}">${seenNote}</span></div>
+          ${setupWarn}
           ${gatewayNote}
         </div>
         <div class="row">

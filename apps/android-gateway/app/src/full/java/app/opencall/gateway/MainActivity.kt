@@ -87,6 +87,15 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refresh()
         autoDetectSim() // re-try after the permission dialog closes
+        // 1.5.13 — after the user returns from the "Display over other
+        // apps" screen (launched by Start gateway), the grant flow has
+        // already run in onCreate; nothing to resume here. But if the
+        // app was freshly opened straight into that screen, ensure the
+        // sequential dialogs fire — startGrantFlow() is idempotent when
+        // everything is already granted.
+        if (permQueue.isEmpty() && !permRequestInFlight && missingCriticalPerms().isNotEmpty()) {
+            startGrantFlow()
+        }
     }
 
     // ============ permission center ============
@@ -425,6 +434,22 @@ class MainActivity : AppCompatActivity() {
                 startGrantFlow()
                 return@button
             }
+            // 1.5.13 — the silent-dialer grants are NOT optional: without
+            // "Display over other apps" the stock dialer pops up on the
+            // phone during every web-placed call. Launch the overlay
+            // settings FIRST and abort the start; the toast explains what
+            // to do. After the user returns (onResume), the grant flow
+            // auto-continues with the phone-app role, and a second tap on
+            // "Start gateway" (now fully granted) goes straight through.
+            if (!hasOverlayPermission()) {
+                toast("One more thing: allow \"Display over other apps\" so calls run in the background (then tap Start again)")
+                openOverlaySettings()
+                return@button
+            }
+            // 1.5.13 — phone-app role: launches the system role dialog when
+            // not held. The gateway still starts — CallControl works without
+            // the role, only the ICS-bound silence path doesn't.
+            if (!isDefaultDialer()) openDefaultDialerScreen()
             GatewayService.start(this@MainActivity)
             refresh()
         }
@@ -638,12 +663,19 @@ class MainActivity : AppCompatActivity() {
         renderBackgroundCard()
     }
 
+    /**
+     * 1.5.13 — the "Background calls" card previously said "optional".
+     * It is NOT optional: without these grants the stock dialer pops up
+     * on every web-placed call (the exact "it still showed up on my
+     * phone like I'm making a manual call" report). The wording now
+     * matches reality.
+     */
     private fun renderBackgroundCard() {
         val dialer = isDefaultDialer()
         bgDialerText.text = if (dialer)
             "✔ Set as phone app — full background control: answer, decline, mute, hold while the screen stays off."
         else
-            "Optional but recommended: make OpenCall Gateway the phone app (Settings → Default apps → Phone). All call control then runs in the background — no dialer UI, screen can stay off."
+            "REQUIRED: tap \"Set as phone app\" and confirm. Without it Android shows the stock dialer on every web-placed call."
         bgDialerBtn.visibility = if (dialer) View.GONE else View.VISIBLE
 
         // 1.5.8 — overlay grant row
@@ -651,7 +683,7 @@ class MainActivity : AppCompatActivity() {
         bgOverlayText.text = if (overlayOk)
             "✔ Display over other apps allowed — silent dialer can dismiss the stock call screen in the background."
         else
-            "Recommended: allow \"Display over other apps\". This is what lets the silent dialer hide the stock call screen while the gateway runs in the background."
+            "REQUIRED: allow \"Display over other apps\". This is what lets the gateway hide the stock call screen while it runs in the background."
         bgOverlayBtn.visibility = if (overlayOk) View.GONE else View.VISIBLE
 
         val on = agentModeOn()
