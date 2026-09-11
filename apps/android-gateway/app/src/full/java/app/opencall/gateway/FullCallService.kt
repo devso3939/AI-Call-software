@@ -182,6 +182,12 @@ class FullCallService : InCallService() {
             lastState = "idle"
             reportState("ended", lastNumber)
             inboundCallId = null
+            // 1.5.10a regression fix — the web UI resets muteState/gatewayMute to
+            // false on every call end (endCallLocal). Reset the phone mirrors too,
+            // otherwise call #2 starts muted while the web shows "Mute" (desync:
+            // toggling once then UNmutes, leaving phone+web disagreeing).
+            micMuted = false
+            WebRtcBridge.setBridgeMicMuted(false)
             // 1.5.10 — last call gone: the phone is the user's again
             CallMask.hide(this)
             // restore normal audio mode
@@ -211,6 +217,9 @@ class FullCallService : InCallService() {
         ringing = false
         active = false
         lastState = "idle"
+        // 1.5.10a regression fix — same stale-mute reset as onCallRemoved
+        micMuted = false
+        WebRtcBridge.setBridgeMicMuted(false)
         CallMask.hide(this)
         instance = null
         super.onDestroy()
@@ -238,6 +247,13 @@ class FullCallService : InCallService() {
                         try { Thread.sleep(350); AudioRoute.reassertSpeaker(applicationContext) } catch (_: Exception) {}
                         try { Thread.sleep(1150); AudioRoute.reassertSpeaker(applicationContext) } catch (_: Exception) {}
                     }.start()
+                } else {
+                    // 1.5.10a — ACTIVE with no bridge: the user is talking on
+                    // the handset (answered on the phone / web didn't take the
+                    // call). Make the mask say so instead of claiming the call
+                    // runs from the computer. If a bridge joins later,
+                    // onBridgeStarted flips the copy back to the bridged one.
+                    CallMask.setHandsetActive()
                 }
             }
             if (state == Call.STATE_RINGING) minimizeCallScreen()

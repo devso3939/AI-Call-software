@@ -1,10 +1,11 @@
 package app.opencall.gateway
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
@@ -34,9 +35,20 @@ import android.util.Log
  * last call ends), so there is no per-state race to lose.
  *
  * The mask is deliberately a real screen, not black glass: it says what is
- * happening ("call running from your computer"), and it is TAP-THROUGH so it
- * can never trap the user — any physical interaction with the phone (pressing
- * Home / Back / tapping the "Unhide" strip) removes it instantly.
+ * happening, and it is TAP-THROUGH so it can never trap the user.
+ *
+ * 1.5.10a — the copy is now call-shape-aware (honesty regression fix):
+ *   • Shown initially as "Waiting for the computer to take this call…" — at
+ *     onCallAdded time we don't yet know whether the web UI will bridge.
+ *   • When a WebRTC bridge actually starts (WebRtcBridge → CallMaskCompat →
+ *     onBridgeStarted) the body swaps to "This call is running from your
+ *     computer".
+ *   • If the call goes ACTIVE with NO bridge (user answered/talks on the
+ *     handset), the body swaps to "Call active on this phone" instead of
+ *     wrongly claiming the call runs from the computer.
+ *   • If the bridge drops mid-call (browser closed) the body reverts to the
+ *     handset copy while the call continues.
+ *   • hide() resets the bridged flag so the next call starts clean.
  *
  * Requires SYSTEM_ALERT_WINDOW ("Display over other apps") — declared in the
  * manifest since 1.5.8 and granted from MainActivity's Background-calls card.
@@ -45,12 +57,81 @@ object CallMask {
 
     private const val TAG = "OpenCall/Mask"
 
+    /** View mutations must happen on the thread that created the view. */
+    private val main = Handler(Looper.getMainLooper())
+
     @Volatile private var view: LinearLayout? = null
     @Volatile private var wm: WindowManager? = null
+    @Volatile private var body: TextView? = null
+    @Volatile private var number: String? = null
+
+    /** 1.5.10a — true once a WebRTC bridge is up for this call. */
+    @Volatile private var bridged: Boolean = false
+
+    private fun waitingBody(n: String?): String =
+        "Waiting for the computer to take this call…\n\n" +
+        (n?.let { "→ $it\n" } ?: "") +
+        "You can leave the phone face down."
+
+    private fun bridgedBody(n: String?): String =
+        "This call is running from your computer.\n" +
+        "The phone is just the SIM gateway — talk and control everything in the web app.\n\n" +
+        (n?.let { "→ $it\n" } ?: "") +
+        "You can leave the phone face down."
+
+    private fun handsetBody(n: String?): String =
+        "Call active on this phone.\n" +
+        "You can mute or hang up from the web app — or just talk normally.\n\n" +
+        (n?.let { "→ $it\n" } ?: "")
 
     private fun allowed(ctx: Context): Boolean = try {
         Settings.canDrawOverlays(ctx)
     } catch (_: Exception) { false }
+
+    /** Swap the body text on the main thread (the overlay view is attached there). */
+    private fun swapTo(text: String) {
+        main.post {
+            try { body?.text = text } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * 1.5.10a — a WebRTC bridge started for this call. Called from WebRtcBridge
+     * (src/main, any flavor) via CallMaskCompat reflection.
+     */
+    @JvmStatic
+    @Synchronized
+    fun onBridgeStarted() {
+        bridged = true
+        if (view != null) swapTo(bridgedBody(number))
+    }
+
+    /**
+     * 1.5.10a — the bridge went away (browser closed, ICE failed, call ended).
+     * If the cellular call is still active the honest copy is the handset one;
+     * if the call is ending the mask will be hidden by onCallRemoved anyway.
+     */
+    @JvmStatic
+    @Synchronized
+    fun onBridgeEnded() {
+        bridged = false
+        if (view != null && FullCallService.active) swapTo(handsetBody(number))
+    }
+
+    /**
+     * 1.5.10a — the call went ACTIVE and no bridge ever started: the user is
+     * talking on the handset. FullCallService calls this directly (same flavor).
+     */
+    @JvmStatic
+    @Synchronized
+    fun setHandsetActive() {
+        if (bridged) return          // the bridge owns the copy — don't clobber it
+        if (view != null) swapTo(handsetBody(number))
+    }
+
+    /** True while a bridge is up (FullCallService gates the handset copy on this). */
+    @JvmStatic
+    fun isBridged(): Boolean = bridged
 
     /**
      * Show the mask. Safe to call repeatedly — keeps the existing mask.
@@ -63,6 +144,7 @@ object CallMask {
         try {
             val manager = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false
             val pad = (20 * ctx.resources.displayMetrics.density).toInt()
+            this.number = number
 
             val box = LinearLayout(ctx).apply {
                 orientation = LinearLayout.VERTICAL
@@ -72,31 +154,30 @@ object CallMask {
                 isFocusable = false
             }
             val title = TextView(ctx).apply {
-                text = "📞  Call active"
+                text = "📞  OpenCall"
                 setTextColor(Color.WHITE)
                 textSize = 22f
                 gravity = Gravity.CENTER
                 setPadding(pad, pad, pad, pad / 2)
             }
-            val body = TextView(ctx).apply {
-                text = "This call is running from your computer.\n" +
-                        "The phone is only the SIM gateway — talk and control everything in the web app.\n\n" +
-                        number?.let { "→ $it\n" }.orEmpty() +
-                        "You can leave the phone face down."
+            val bodyTv = TextView(ctx).apply {
+                // 1.5.10a — start honest: we don't know yet whether the
+                // computer will take this call or the user will.
+                text = if (bridged) bridgedBody(number) else waitingBody(number)
                 setTextColor(0xFFB8C4B0.toInt())
                 textSize = 15f
                 gravity = Gravity.CENTER
                 setPadding(pad, 0, pad, pad)
             }
             val unhide = TextView(ctx).apply {
-                text = "tap anywhere or press Home to unhide the phone"
+                text = "OpenCall hides the dialer during calls — the screen returns when the call ends."
                 setTextColor(0xFF6B7A66.toInt())
                 textSize = 12f
                 gravity = Gravity.CENTER
                 setPadding(pad, pad / 2, pad, pad * 2)
             }
             box.addView(title)
-            box.addView(body)
+            box.addView(bodyTv)
             box.addView(unhide)
 
             val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
@@ -109,8 +190,7 @@ object CallMask {
                 WindowManager.LayoutParams.MATCH_PARENT,
                 type,
                 // NOT_TOUCHABLE → taps pass through to whatever is underneath
-                // (the launcher / dialer), so the phone can never be trapped;
-                // LAYOUT_NO_LIMITS not needed — match_parent covers the screen.
+                // (the launcher / dialer), so the phone can never be trapped.
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                         or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
@@ -121,7 +201,8 @@ object CallMask {
             manager.addView(box, lp)
             view = box
             wm = manager
-            Log.i(TAG, "call mask shown")
+            body = bodyTv
+            Log.i(TAG, "call mask shown${if (bridged) " (bridged)" else ""}")
             return true
         } catch (e: Exception) {
             Log.w(TAG, "show failed: ${e.message}")
@@ -136,6 +217,9 @@ object CallMask {
         try { wm?.removeView(v) } catch (_: Exception) {}
         view = null
         wm = null
+        body = null
+        number = null
+        bridged = false          // 1.5.10a — next call starts with a clean slate
         Log.i(TAG, "call mask hidden")
     }
 

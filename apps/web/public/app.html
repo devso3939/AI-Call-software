@@ -1064,6 +1064,9 @@ async function gwToggleMute(btn) {
   if (!id) return;
   gatewayMute = want;
   if (btn) btn.textContent = want ? 'Unmute phone mic' : 'Mute phone mic';
+  // 1.5.10a: re-render so the button's danger/ghost class always matches
+  // (the cp-phone button lives in callPanel, which only re-renders on renderApp)
+  renderApp();
   showToast(want
     ? 'Phone mic muted — room noise around the phone stops leaking into the call'
     : 'Phone mic live');
@@ -1076,6 +1079,7 @@ async function gwToggleSpeaker(btn) {
   if (!id) return;
   gatewaySpeaker = want;
   if (btn) btn.textContent = want ? 'Speaker off' : 'Speaker on';
+  renderApp();   // 1.5.10a: keep cp-spk danger/ghost class in sync
   showToast(want ? 'Phone speaker ON (audio flows to browser)' : 'Phone speaker OFF (call is on the earpiece)');
 }
 
@@ -2232,6 +2236,9 @@ function cpMute(btn) {
   // so browser-mic mute = the far end stops hearing YOU. It no longer mutes
   // the phone's mic (that was the 1.5.9 bug — it silenced your own voice).
   // The phone-mic mute lives on the secondary 🎙️ phone button.
+  // 1.5.10a regression guard: listen-only gateway call (no browser mic) has
+  // nothing to mute — flipping muteState would render a fake "Unmute" state.
+  if (!call.isPstn && !localStream) { showToast('No microphone on this call — nothing to mute (listen-only)'); return; }
   muteState = !muteState;
   if (call.isPstn) {
     try { if (activeTwilioCall) activeTwilioCall.mute(muteState); } catch {}

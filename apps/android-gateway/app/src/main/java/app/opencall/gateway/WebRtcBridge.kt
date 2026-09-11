@@ -227,6 +227,11 @@ class WebRtcBridge(
             }
         }.also { it.name = "oc-signaling"; it.start() }
 
+        // 1.5.10a — the bridge is real: flip the CallMask copy from "waiting
+        // for the computer…" to "call running from your computer" (full
+        // flavor; silent no-op on lite via reflection shim).
+        CallMaskCompat.bridgeStarted()
+
         Log.i(TAG, "bridge started room=$room callId=$callId mode=${if (offer) "OFFER" else "ANSWER"}")
     }
 
@@ -373,6 +378,9 @@ class WebRtcBridge(
         callId = null
         pollThread = null
         AudioRoute.speakerOff(ctx)
+        // 1.5.10a — bridge gone: if the cellular call is still active the
+        // mask copy reverts to the handset wording (no-op on lite flavor).
+        CallMaskCompat.bridgeEnded()
         Log.i(TAG, "bridge closed")
     }
 
