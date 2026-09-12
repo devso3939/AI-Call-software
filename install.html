@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install OpenCall Gateway on Android</title>
+<link rel="icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#070b14">
+<style>
+  :root{
+    --bg:#070b14;--card:rgba(17,24,39,.72);--border:rgba(148,163,184,.14);
+    --text:#e5eaf3;--muted:#8b98ad;--mint:#10b981;--mint400:#34d399;--cyan:#22d3ee;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--text);
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(16,185,129,.16), transparent 60%),
+      radial-gradient(900px 500px at 85% -10%, rgba(34,211,238,.12), transparent 60%),
+      var(--bg);
+    min-height:100vh;line-height:1.6;-webkit-font-smoothing:antialiased;padding:20px 16px 60px;
+  }
+  .wrap{max-width:680px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+  .brand .logo{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--mint),var(--cyan));font-size:20px;box-shadow:0 6px 24px rgba(16,185,129,.35)}
+  .brand h1{font-size:1.15rem;letter-spacing:-.02em}
+  .hero{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:26px 24px;
+    box-shadow:0 20px 60px rgba(0,0,0,.45);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);text-align:center;margin-bottom:18px}
+  .hero h2{font-size:1.5rem;letter-spacing:-.02em;margin-bottom:6px}
+  .hero p{color:var(--muted);font-size:.92rem}
+  .badges{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:14px 0 4px}
+  .badge{font-size:.72rem;font-weight:700;color:var(--mint400);background:rgba(16,185,129,.10);
+    border:1px solid rgba(16,185,129,.28);border-radius:999px;padding:4px 12px}
+  .dl{display:block;width:100%;margin-top:18px;padding:15px;border:none;border-radius:14px;cursor:pointer;
+    background:linear-gradient(135deg,var(--mint),var(--cyan));color:#04110c;font-weight:800;font-size:1.05rem;text-decoration:none;
+    box-shadow:0 10px 34px rgba(16,185,129,.4);transition:transform .15s,box-shadow .2s}
+  .dl:hover{transform:translateY(-2px);box-shadow:0 14px 44px rgba(16,185,129,.55)}
+  .dlrow{display:flex;gap:10px;margin-top:10px}
+  .dlrow a{flex:1;display:block;padding:11px;border-radius:12px;text-decoration:none;text-align:center;
+    background:rgba(148,163,184,.07);border:1px solid var(--border);color:var(--text);font-weight:700;font-size:.85rem}
+  .dlrow a:hover{background:rgba(148,163,184,.13)}
+  .qrgrid{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:18px}
+  .qrcell{background:#fff;border-radius:14px;padding:10px;width:132px;cursor:pointer;text-align:center;
+    transition:transform .15s ease, box-shadow .15s ease}
+  .qrcell:hover{transform:translateY(-3px);box-shadow:0 6px 18px rgba(0,0,0,.45)}
+  .qrcell img{width:100%;height:auto;image-rendering:pixelated;border-radius:6px;display:block}
+  .qrlab{font-size:.72rem;font-weight:700;color:#0f172a;margin-top:6px;line-height:1.35}
+  .qrlab span{font-weight:500;color:#475569;font-size:.62rem}
+  .qrt{font-size:.75rem;color:var(--muted);margin-top:8px}
+  .sec{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:22px 24px;margin-bottom:18px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  .sec h3{font-size:1.05rem;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .steps{display:flex;flex-direction:column;gap:12px}
+  .step{display:flex;gap:12px;align-items:flex-start}
+  .step .n{width:28px;height:28px;flex-shrink:0;border-radius:999px;display:grid;place-items:center;
+    background:rgba(16,185,129,.14);color:var(--mint400);font-weight:800;font-size:.82rem;border:1px solid rgba(16,185,129,.3)}
+  .step p{font-size:.9rem;color:#cbd5e1}
+  .step p strong{color:var(--text)}
+  .warn{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:14px;padding:14px 16px;margin-top:12px}
+  .warn p{font-size:.85rem;color:#fcd34d}
+  .warn p strong{color:#fde68a}
+  .ok{background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3);border-radius:14px;padding:14px 16px;margin-top:12px}
+  .ok p{font-size:.85rem;color:#a7f3d0}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .otab{padding:8px 14px;border-radius:10px;border:1px solid var(--border);background:rgba(148,163,184,.06);
+    color:var(--muted);font-weight:700;font-size:.8rem;cursor:pointer}
+  .otab.on{background:rgba(16,185,129,.14);border-color:rgba(16,185,129,.4);color:var(--mint400)}
+  .pane{display:none}.pane.on{display:block}
+  footer{text-align:center;color:#64748b;font-size:.75rem;margin-top:8px}
+  footer a{color:#8b98ad}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="logo">☎</div>
+    <h1>OpenCall <span style="color:var(--mint400)">AI</span></h1>
+  </div>
+
+  <div class="hero">
+    <h2>Install OpenCall on Android</h2>
+    <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
+    <div class="badges">
+      <span class="badge">✓ v1.5.17 · Android 8.0+</span>
+      <span class="badge">✓ Signed release builds</span>
+      <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
+      <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
+    </div>
+    <a class="dl" href="https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk"
+       download id="dlbtn" style="background:linear-gradient(135deg,#f59e0b,#fbbf24);color:#1a1206">🟡 Download OpenCall Gateway — FULLY AUTOMATIC calls + SMS via your SIM (recommended)</a>
+    <a class="dl" href="https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-bridge.apk"
+       download id="dlbtn2" style="background:rgba(16,185,129,.12);color:var(--mint400);border:1px solid rgba(16,185,129,.4);box-shadow:none;margin-top:10px;font-size:.95rem">🟢 Download OpenCall Bridge — zero permissions, tap-to-dial / tap-to-send fallback</a>
+    <div class="dlrow">
+      <a href="app.html">Open web app instead</a>
+      <a href="app.html" onclick="sessionStorage.setItem('pwaHint','1')">📲 Install as web app (no APK)</a>
+    </div>
+    <div class="qrgrid">
+      <div class="qrcell" onclick="location.href='https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk'">
+        <img alt="QR: download OpenCall Gateway APK" src="qr/gateway-apk.png">
+        <div class="qrlab">🟡 Gateway APK<br><span>automatic SIM calls + SMS</span></div>
+      </div>
+      <div class="qrcell" onclick="location.href='https://devso3939.github.io/AI-Call-software/install.html'">
+        <img alt="QR: this install page" src="qr/install-page.png">
+        <div class="qrlab">📱 This page<br><span>guide + web app</span></div>
+      </div>
+      <div class="qrcell" onclick="location.href='https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-bridge.apk'">
+        <img alt="QR: download OpenCall Bridge APK" src="qr/bridge-apk.png">
+        <div class="qrlab">🟢 Bridge APK<br><span>zero permissions, tap mode</span></div>
+      </div>
+    </div>
+    <p class="qrt">Scan with your phone camera — Gateway QR downloads the automatic APK directly</p>
+  </div>
+
+  <div class="sec">
+    <h3>🟢 What's new in v1.5.17</h3>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.17 — gateway credentials on the phone itself:</strong> you no longer need the web app to create your SMS gateway username and password. The gateway app now has its own <strong>"SMS Gateway" section</strong>: type a username (e.g. <code>smartbookly</code>), tap <strong>Create / rotate gateway credentials</strong>, and the phone generates a strong password, shows it in a dialog, and stores it encrypted on the phone. Paste that username + password into any third-party service (like SmartBookly) and it can send SMS from this SIM through the OpenCall cloud — the same API as before: <code>gateway_api_login</code> → 24-hour token, or username+password on every call to <code>gateway_api_send_sms</code>. A <strong>Gateway status</strong> button shows whether the gateway is on and its sent/failed counters. Install over the previous build — no re-pairing needed.</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.16 — SMS Gateway:</strong> the web app now has an <strong>📡 SMS Gateway tab</strong>. Enable it, pick which of your paired phones sends the messages, and choose a username and password (or let the app generate one — the password is shown exactly once and only its hash is stored). Any third-party service can then send SMS from your real SIM the same way as sms-gate: log in with your credentials to get a 24-hour token, or just pass username+password on every request, and call <code>gateway_api_send_sms</code>. Sends go only to the device you selected (with an optional "any online device" fallback), are rate-limited to 120/minute, and every successful API call is logged in an activity log you can see in the web app. The phone app needs no update for this — install v1.5.16 to get the version bump; no re-pairing needed.</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.15 — the full audit build:</strong> every line of the web app, the phone apps and the database was reviewed and <strong>19 bugs fixed</strong>. On the web: a recording bug that doubled the far-end voice volume (the speaker tap was connected to the recording bus twice), a crash when the phone app's heartbeat channel closed (<code>removeChannel(null)</code>), a race that could start two recordings at once, a stale pairing-code list after re-pairing, a call timer that never started on accepted calls, a level-meter that kept running (leaking audio) after a call ended, honest guards on hang-up/bridge-join, and safer text escaping in buttons that copy codes and keys. On the phone: incoming-call reporting no longer stalls the Telecom binder thread (could freeze or crash the call screen), the correct Android "simulated ringing" state constant, native WebRTC memory leaks fixed (factory/EGL/track disposal), the audio bridge no longer dies silently when the screen rotates, the call mask overlay now updates the number on call-waiting, and the self-dial loop guard in the bridge flavor. Install this build over the previous one — no re-pairing needed.</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.14 — the far-end voice fix:</strong> your phone reported "Set as phone app" was never granted — and it turned out the app was never <em>eligible</em> for that role (Android requires a dial intent handler the app didn't have), so the role screen silently did nothing. Without the role, Android kept the <strong>other person's voice on the phone's earpiece</strong> — it never reached the microphone, so you couldn't hear them on the computer and they weren't recorded, while your own voice worked fine. This build makes the role grantable, pins the loudspeaker with the modern <code>setCommunicationDevice</code> API as a fallback, and adds a live <strong>"their voice" level meter</strong> in the call panel (green = arriving, red = not reaching this device) plus a red in-call warning with the exact fix. <strong>After installing: open the app → "Set as phone app" → confirm → end and redial.</strong></p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.13 — the two reported bugs are fixed:</strong> (1) <strong>Calls stay in the background on the phone</strong> — "Start gateway" now walks you through the two grants Android needs (Display over other apps + Set as phone app) instead of leaving them optional; the web app's Devices tab shows a ⚠️ warning when either is missing. No more stock dialer popping up on the phone during calls. (2) <strong>Recordings capture both voices</strong> — the bridge flavor now disables hardware echo cancellation (it was erasing the caller from the mic) and forces the loudspeaker route; a route-keeper re-pins the speaker every 2 s during the call so telecom can't flip it back to the earpiece mid-call.</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.12 — your mic and speakers, over the internet:</strong> the web-app device's microphone is the call mic and its speakers play the caller — audio is transported over the <strong>internet</strong> (WebRTC with a TURN relay), so the phone can be in a completely different location. No Bluetooth pairing needed. The phone just dials from your SIM and relays audio through the internet tunnel — no phone dialer UI, no phone mic, no phone speaker. Talk, listen, mute, hold, end and record — all from the web app, and recordings capture both voices.</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.11 recap — the two big fixes:</strong> (1) <strong>Web app no longer blinks</strong> — the page stopped rebuilding itself every time your phone sent a heartbeat; "last seen" now refreshes silently in place. (2) <strong>Audio bridge now actually connects</strong> — both the web app and the phone app previously relied on STUN only, which fails on most home Wi-Fi and mobile data, so the call audio stayed on the phone. A TURN relay is now built in on both sides, so the browser sends and receives the call audio and <strong>the call runs from your computer</strong>: end it, mute it, hold it from the web panel. If the bridge ever fails to connect, the web app now tells you honestly instead of staying silent.</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.10a regression fixes:</strong> mute state no longer leaks between calls (call #2 always starts unmuted, in sync on phone + web); the Mute button on listen-only gateway calls shows an honest hint instead of a fake state; call-panel buttons keep their highlight in sync. The call mask is now <strong>call-shape aware</strong>: it says "Waiting for the computer to take this call…" at first, switches to "call running from your computer" only when the bridge is real, and switches to "Call active on this phone" if you answer on the handset — it never lies about where the call runs.</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>Your calls are now fully web-controlled — the phone is just a SIM radio:</strong> a full-screen <strong>call mask</strong> covers the stock dialer for the whole call (the phone shows "📞 Call active — this call is running from your computer" instead of the dialer UI); it auto-disappears when the call ends and never traps your taps. The old 12-second silent-dialer window is now 30 seconds and restarts on every call-state change, so the dialer can't sneak back mid-call.</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>Mute finally does what you expect:</strong> the big <strong>Mute</strong> button in the web call panel now mutes <em>your</em> microphone (browser mic) — exactly like internet calls — instead of muting the phone's mic (which was killing your own voice in the call). A separate secondary <strong>Mute phone mic</strong> button silences the phone's own microphone to cut room noise. Android reports which mute path applied (telecom vs bridge) so the web shows the truth.</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>Louder, clearer voice path:</strong> the gateway now auto-raises the phone's in-call (voice-call) volume to max when a call starts and restores it after — so your voice from the computer always reaches the far end at full strength even if the phone's volume slider was low. The web call panel and Devices tab now explain the acoustic bridge honestly ("your voice: computer mic → phone speaker → the call").</p>
+    </div>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.9 recap:</strong> deep regression sweep (10 bugs — live timers, signaling race, focus loss…), full UI/UX refresh with Inter typography. <strong>v1.5.8 recap:</strong> laptop audio fixed (AEC off + speaker re-assert), floating call popup, both-voice recordings.</p>
+    </div>
+    <div class="warn">
+      <p><strong>SMS still blocked after granting?</strong> On One UI 6+ (Samsung) check <strong>Settings → Security and privacy → Auto Blocker</strong> — see the 🛡️ section below. On stock Android, <strong>Play Protect's financial-fraud warning</strong> is the usual culprit: <strong>More details → Install anyway</strong>, or register the app (section below) for a permanent fix.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>🚀 Install in 4 steps</h3>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><p>Download the APK on your Android 8.0+ phone (recommended: <strong>Gateway</strong> for fully automatic SIM calls + SMS; Bridge only if you want the zero-permission tap-based fallback).</p></div>
+      <div class="step"><div class="n">2</div><p>Open it. If the sensitive-data dialog appears on <strong>Gateway</strong>: tap <strong>More details → Install anyway</strong> (or register first, per the section above). <strong>Bridge never shows it.</strong></p></div>
+      <div class="step"><div class="n">3</div><p>In the web app open the <strong>Devices</strong> tab → <strong>Create pairing code</strong> → type the 6 digits into the app → <strong>Pair</strong>.</p></div>
+      <div class="step"><div class="n">4</div><p><strong>Gateway asks permissions one at a time</strong> — allow each (SMS, phone, mic). If a dialog never appears, tap <strong>Blocked at install? Open unblock guide</strong> right in the app (Auto Blocker / Play Protect are the usual cause), or grant them in <strong>Settings → Apps → OpenCall Gateway → Permissions</strong>. Then tap <strong>Start gateway</strong> (Gateway) or <strong>Start bridge</strong> (Bridge).</p></div>
+      <div class="step"><div class="n">5</div><p><strong>Bridge users:</strong> on the app's main screen enter your SIM number and tap <strong>Save SIM number</strong> — the web app then shows it under your device in the Devices tab.</p></div>
+    </div>
+    <div class="ok" style="margin-top:14px">
+      <p><strong>No APK at all?</strong> The <a href="app.html" style="color:var(--mint400)">web app</a> installs as a PWA (Chrome → ⋮ → Install / “Add to Home screen”) with zero Play Protect involvement — full internet calling, no SIM relay.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>🛡️ If Android says “Blocked for your protection”</h3>
+    <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">Since April 2026 this message comes from Google's new <strong style="color:var(--text)">Android Developer Verifier</strong>. It appears for every APK whose developer isn't registered with Google — <strong style="color:var(--text)">it is not a malware verdict</strong>, and no APK signature can turn it off. Apps you installed before that never saw this dialog because they came from registered developers. Here are your options:</p>
+    <div class="tabs" id="otabs">
+      <button class="otab on" data-pane="stock">Quick: 1-tap bypass</button>
+      <button class="otab" data-pane="autoblocker">Samsung Auto Blocker</button>
+      <button class="otab" data-pane="samsung">Permanent: Advanced Flow</button>
+      <button class="otab" data-pane="xiaomi">Xiaomi / Huawei</button>
+    </div>
+    <div class="pane on" id="pane-stock">
+      <div class="steps">
+        <div class="step"><div class="n">1</div><p>Tap <strong>More details</strong> on the block dialog (small text link).</p></div>
+        <div class="step"><div class="n">2</div><p>Tap <strong>Install anyway</strong> → <strong>OK</strong>. Takes 3 seconds, needed once per app.</p></div>
+        <div class="step"><div class="n">3</div><p>Done — future updates with the same signature install without the dialog.</p></div>
+      </div>
+    </div>
+    <div class="pane" id="pane-autoblocker">
+      <div class="warn" style="margin:0 0 12px">
+        <p><strong>Auto Blocker is different from the verifier dialog above.</strong> It's Samsung's own switch (One UI 6+), it blocks <em>silently</em> — no “Install anyway” button, install just fails or the app installs crippled with no permission dialogs. If the quick bypass above did nothing on your Samsung, this is your blocker.</p>
+      </div>
+      <div class="steps">
+        <div class="step"><div class="n">1</div><p>Open <strong>Settings → Security and privacy → Auto Blocker</strong>.</p></div>
+        <div class="step"><div class="n">2</div><p>Turn <strong>Auto Blocker off</strong> while you install OpenCall Gateway — or keep it on and tap <strong>App allowed</strong> (allowed-apps list) and add OpenCall Gateway there.</p></div>
+        <div class="step"><div class="n">3</div><p>Install the APK again. Now the permission dialogs (SMS, phone, mic) will actually appear when the app asks.</p></div>
+        <div class="step"><div class="n">4</div><p>You can switch Auto Blocker back on after installing — OpenCall stays allowed. If you later re-install from scratch, repeat this once.</p></div>
+      </div>
+      <div class="ok">
+        <p><strong>Symptom checker:</strong> install fails with no reason shown → Auto Blocker. App installed but “Send SMS” / call buttons do nothing and no permission dialog ever popped → Auto Blocker suppressed the dialogs; open the app and tap <strong>Grant missing permissions</strong>, or enable them in <strong>Settings → Apps → OpenCall Gateway → Permissions</strong>.</p>
+      </div>
+    </div>
+    <div class="pane" id="pane-samsung">
+      <div class="steps">
+        <div class="step"><div class="n">1</div><p>One-time setup: <strong>Settings → About phone → tap “Build number” 7×</strong> to unlock Developer options.</p></div>
+        <div class="step"><div class="n">2</div><p><strong>Settings → Developer options → Apps from unverified developers</strong> → select <strong>Allow</strong>.</p></div>
+        <div class="step"><div class="n">3</div><p>Confirm and wait <strong>24 hours</strong> (Google's cooldown — device-wide, once ever).</p></div>
+        <div class="step"><div class="n">4</div><p>After the wait, every sideloaded APK installs with a single <strong>Install anyway</strong> tap — no per-app friction, and scanning stays ON.</p></div>
+      </div>
+    </div>
+    <div class="pane" id="pane-xiaomi">
+      <div class="steps">
+        <div class="step"><div class="n">1</div><p>On the block dialog tap <strong>More details → Install anyway</strong>.</p></div>
+        <div class="step"><div class="n">2</div><p>If a Settings screen opens instead: <strong>Settings → Apps → Install unknown apps</strong> → Chrome → Allow.</p></div>
+        <div class="step"><div class="n">3</div><p>MIUI: also enable <strong>Install via USB</strong> in Developer options if install fails silently. Huawei: <strong>Settings → Privacy protection → Special permissions → Install unknown apps</strong> → your browser → Allow.</p></div>
+      </div>
+    </div>
+    <div class="warn">
+      <p><strong>Why you can trust this APK:</strong> the full source is public, the build is produced automatically on GitHub Actions, and the APK is signed with the project's release key. Verify anytime at the <a href="https://github.com/devso3939/AI-Call-software" style="color:var(--mint400)">public repo</a>.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>✅ Permanent fix — free app registration (~15 min, no gov ID)</h3>
+    <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">The “sensitive data / financial fraud” warning is Google's financial-fraud prevention: it blocks unverified apps that request <strong style="color:var(--text)">SMS or Phone permissions</strong> based on the app's <em>permission declarations + developer registration</em> — not the code. That's why rebuilding or re-signing never removes it. Registering the app makes every future install silent:</p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><p>On your computer open <strong>android.google.com/developerconsole</strong> → sign in with your Google account (enable <strong>2-Step Verification</strong> first if asked).</p></div>
+      <div class="step"><div class="n">2</div><p>Choose <strong>“Limited distribution”</strong> — free, no fee, no government ID, up to 20 devices. You'll need a Google payments profile (for your legal name/address — nothing is charged).</p></div>
+      <div class="step"><div class="n">3</div><p><strong>Register package name</strong> <code>app.opencall.gateway2</code> and add the signing-key SHA-256 fingerprint:<br><code style="font-size:.75rem;word-break:break-all">03:3C:51:17:75:9D:2A:B2:2B:8C:A6:16:56:76:5B:2D:F1:9B:9D:73:A1:CB:F0:C7:63:A3:F1:76:0E:6B:27:57</code></p></div>
+      <div class="step"><div class="n">4</div><p>On the <strong>Devices</strong> page add your phone: generate the request on the console, scan the QR / open the link <em>on the phone</em>, confirm the developer name, and enter the authorization code it produces.</p></div>
+      <div class="step"><div class="n">5</div><p>Install <strong>opencall-gateway.apk</strong> → no warning anymore — on this build and every future update (same key + registered package).</p></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>📲 Better: install the web app (nothing to unblock)</h3>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><p>Open <a href="app.html" style="color:var(--mint400)">the web app</a> in Chrome on Android.</p></div>
+      <div class="step"><div class="n">2</div><p>Tap the <strong>📲 Install OpenCall app</strong> button (bottom-right) — or Chrome menu ⋮ → <strong>Add to Home screen</strong>.</p></div>
+      <div class="step"><div class="n">3</div><p>It installs like a native app — own icon, full-screen window, works offline — with <strong>zero Play Protect involvement</strong>.</p></div>
+    </div>
+    <div class="ok">
+      <p><strong>Recommended pairing:</strong> install the PWA on your daily phone (make/receive calls in browser) + the APK gateway on a spare phone (free SIM calls/SMS). Both pair with the same account in <strong>Devices</strong>.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>🔑 After install: pair in 60 seconds</h3>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><p>Open the web app → <strong>Devices</strong> → <strong>Pair Android device</strong> → copy the 6-digit code (valid 15 min).</p></div>
+      <div class="step"><div class="n">2</div><p>Open the Gateway app → paste code → <strong>Pair</strong> → grant the permissions it asks for (calls, SMS, microphone).</p></div>
+      <div class="step"><div class="n">3</div><p>Tap <strong>Start gateway</strong>. The status pill turns green in the web app — you're live.</p></div>
+    </div>
+  </div>
+
+  <footer>OpenCall AI · <a href="app.html">Web app</a> · <a href="https://github.com/devso3939/AI-Call-software">Source</a> · <a href="https://github.com/devso3939/AI-Call-software/releases/latest/download/opencall-gateway.apk">Direct APK link</a></footer>
+</div>
+
+<script>
+// OEM tab switching
+document.getElementById('otabs').addEventListener('click', (e) => {
+  const b = e.target.closest('.otab'); if (!b) return;
+  document.querySelectorAll('.otab').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  document.querySelectorAll('.pane').forEach(p => p.classList.remove('on'));
+  const p = document.getElementById('pane-' + b.dataset.pane); if (p) p.classList.add('on');
+});
+</script>
+</body>
+</html>
