@@ -190,6 +190,11 @@ class GatewayService : Service() {
                     val smsId = cmd.payload.optString("smsId")
                     val to = cmd.payload.optString("to")
                     val body = cmd.payload.optString("body")
+                    // "via" names the origin (web UI, api key name, or
+                    // sms-gateway:<username>) — log it so the owner can trace
+                    // third-party API sends in logcat.
+                    val via = cmd.payload.optString("via", "")
+                    Log.i(TAG, "send_sms via=$via")
                     if (to.isNotBlank() && body.isNotBlank()) {
                         SmsSender.send(this, smsId, to, body)
                         ok = true

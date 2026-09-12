@@ -93,12 +93,20 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.15 · versionCode 22). Two APKs:
+            build (v1.5.16 · versionCode 23). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.16 highlights — SMS Gateway (sms-gate style API)
+            **New feature — turn your phone into a cloud SMS gateway:**
+            - **SMS Gateway tab in the web app** — enable the gateway, pick the SIM device, choose a username and password (or let it generate one). The password is shown exactly once; only its hash is stored.
+            - **Third-party services send SMS with your credentials** — same model as sms-gate: `gateway_api_login` → 24-hour bearer token, then `gateway_api_send_sms` queues the message; your paired phone picks it up on its normal poll and sends it from the real SIM. Username+password per-request also works (no login step).
+            - **Device binding with optional fallback** — sends route only to the device you selected; tick "allow any online device" to fall back when the bound one is offline.
+            - **Rate limit + audit trail** — 120 requests/minute per gateway account; every successful login, send and status check is logged and visible in the web app's API activity log.
+            - **Android unchanged functionally** — the API reuses the existing send_sms command pipeline; the gateway app just logs which credential sent each message.
 
             ### v1.5.15 highlights — full-project audit: 19 bugs found & fixed
             **Web app (app.html):**

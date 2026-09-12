@@ -83,7 +83,7 @@
     <h2>Install OpenCall on Android</h2>
     <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.15 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.16 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
       <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
@@ -114,7 +114,10 @@
   </div>
 
   <div class="sec">
-    <h3>🟢 What's new in v1.5.15</h3>
+    <h3>🟢 What's new in v1.5.16</h3>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.16 — SMS Gateway:</strong> the web app now has an <strong>📡 SMS Gateway tab</strong>. Enable it, pick which of your paired phones sends the messages, and choose a username and password (or let the app generate one — the password is shown exactly once and only its hash is stored). Any third-party service can then send SMS from your real SIM the same way as sms-gate: log in with your credentials to get a 24-hour token, or just pass username+password on every request, and call <code>gateway_api_send_sms</code>. Sends go only to the device you selected (with an optional "any online device" fallback), are rate-limited to 120/minute, and every successful API call is logged in an activity log you can see in the web app. The phone app needs no update for this — install v1.5.16 to get the version bump; no re-pairing needed.</p>
+    </div>
     <div class="ok" style="margin-bottom:10px">
       <p><strong>v1.5.15 — the full audit build:</strong> every line of the web app, the phone apps and the database was reviewed and <strong>19 bugs fixed</strong>. On the web: a recording bug that doubled the far-end voice volume (the speaker tap was connected to the recording bus twice), a crash when the phone app's heartbeat channel closed (<code>removeChannel(null)</code>), a race that could start two recordings at once, a stale pairing-code list after re-pairing, a call timer that never started on accepted calls, a level-meter that kept running (leaking audio) after a call ended, honest guards on hang-up/bridge-join, and safer text escaping in buttons that copy codes and keys. On the phone: incoming-call reporting no longer stalls the Telecom binder thread (could freeze or crash the call screen), the correct Android "simulated ringing" state constant, native WebRTC memory leaks fixed (factory/EGL/track disposal), the audio bridge no longer dies silently when the screen rotates, the call mask overlay now updates the number on call-waiting, and the self-dial loop guard in the bridge flavor. Install this build over the previous one — no re-pairing needed.</p>
     </div>

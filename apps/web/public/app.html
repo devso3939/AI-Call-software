@@ -755,6 +755,18 @@ let newApiKeyName = '';
 let freshApiKey = null;          // {id,name,key,prefix} — plaintext shown exactly once
 let docKeySel = null;            // key id referenced by the copy-paste docs
 
+/* SMS Gateway (sms-gate style): username+password credentials for
+   third-party services to send SMS through the user's SIM */
+let smsGw = null;                // row from get_sms_gateway() — {enabled, username, deviceId, ...}
+let smsGwLoaded = false;
+let smsGwLog = [];               // rows from get_gateway_api_log()
+let smsGwLogLoaded = false;
+let gwUsername = '';             // setup form state
+let gwPassword = '';             // setup form state
+let gwDeviceSel = '';            // setup form: bound device id
+let gwAnyDevice = false;         // setup form: allow fallback to any online device
+let freshGwPassword = null;      // plaintext password shown exactly once after setup
+
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 /* esc() is for HTML content — NOT safe inside inline JS strings: it turns '
    into &#39; which the HTML parser decodes back to ' and breaks the literal.
@@ -1105,6 +1117,83 @@ async function revokeApiKey(id) {
 function setActiveKeyForDocs(id) {
   docKeySel = id;
   renderApp();
+}
+
+/* ---------------- SMS Gateway: username+password for third-party services ---------------- */
+async function refreshSmsGw() {
+  const { data, error } = await sb.rpc('get_sms_gateway');
+  if (!error && data) {
+    // PostgREST returns a bare jsonb object or an array-wrapped one depending on
+    // function shape — normalize both to a single object.
+    smsGw = Array.isArray(data) ? (data[0] || null) : data;
+    smsGwLoaded = true;
+  }
+  if (me) renderApp();
+}
+
+async function refreshGwLog() {
+  const { data, error } = await sb.rpc('get_gateway_api_log', { p_limit: 50 });
+  if (!error && data) { smsGwLog = data; smsGwLogLoaded = true; }
+  if (me) renderApp();
+}
+
+async function setupSmsGw() {
+  setError('');
+  const devId = (gwDeviceSel || '').trim();
+  if (!devId) return setError('Pick which phone the gateway sends from.');
+  const uname = (gwUsername || '').trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(uname))
+    return setError('Username: 3–40 chars — lowercase letters, digits, dot, dash, underscore.');
+  if (gwPassword && gwPassword.length < 8)
+    return setError('Password must be at least 8 characters (or leave empty to auto-generate a strong one).');
+  const { data, error } = await sb.rpc('setup_sms_gateway', {
+    p_device_id: devId, p_username: uname, p_password: gwPassword || null, p_any_device: gwAnyDevice,
+  });
+  if (error) return setError(honestError(error));
+  freshGwPassword = data;                   // plaintext password shown exactly once
+  gwPassword = '';
+  showToast('SMS Gateway enabled — copy the password now, it is shown only once');
+  await refreshSmsGw();
+  await refreshGwLog();
+}
+
+async function disableSmsGw() {
+  if (!confirm('Disable the SMS Gateway? Every third-party service using these credentials will immediately lose access.')) return;
+  const { error } = await sb.rpc('disable_sms_gateway');
+  if (error) return setError(honestError(error));
+  freshGwPassword = null;
+  showToast('SMS Gateway disabled');
+  await refreshSmsGw();
+  await refreshGwLog();
+}
+
+function gwExample(kind) {
+  const U = (smsGw && smsGw.username) || '<YOUR_GATEWAY_USERNAME>';
+  const P = freshGwPassword ? freshGwPassword.password : '<YOUR_GATEWAY_PASSWORD>';
+  const T = '<TOKEN_FROM_LOGIN>';
+  const B = 'https://ijrfqjxdajgoaysazxle.supabase.co/rest/v1/rpc';
+  const ANON = SUPABASE_ANON_KEY;
+  if (kind === 'login') return `curl -X POST '${B}/gateway_api_login' \\
+  -H 'apikey: ${ANON}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"p_username":"${U}","p_password":"${P}"}'
+# → {"token":"ogt_…","expiresAt":"2026-…"} — valid 24 h, cache it`;
+  if (kind === 'send') return `curl -X POST '${B}/gateway_api_send_sms' \\
+  -H 'apikey: ${ANON}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"p_username":"${U}","p_password":"${P}","p_to":"+995599123456","p_body":"Hello from my service!"}'
+# or with a token: {"p_token":"${T}","p_to":"…","p_body":"…"}`;
+  if (kind === 'status') return `curl -X POST '${B}/gateway_api_status' \\
+  -H 'apikey: ${ANON}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"p_username":"${U}","p_password":"${P}"}'
+# → device online/battery, sent/failed counters, rate limit`;
+  if (kind === 'getsms') return `curl -X POST '${B}/gateway_api_get_sms' \\
+  -H 'apikey: ${ANON}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"p_token":"${T}","p_limit":20}'
+# → last 20 messages (outbound + inbound) with delivery status`;
+  return '';
 }
 
 function copyText(txt, msg) {
@@ -1932,13 +2021,14 @@ function renderApp() {
   const focusSel = ae && typeof ae.selectionStart === 'number' ? { start: ae.selectionStart, end: ae.selectionEnd } : null;
   const sideOpen = document.getElementById('sidebar')?.classList.contains('open') ? ' show' : '';
   const body = tab === 'dialer' ? tabDialer() : tab === 'sms' ? tabSms() : tab === 'devices' ? tabDevices()
-             : tab === 'connect' ? tabConnect() : tab === 'contacts' ? tabContacts()
+             : tab === 'connect' ? tabConnect() : tab === 'gateway' ? tabSmsGateway() : tab === 'contacts' ? tabContacts()
              : tab === 'history' ? tabHistory() : tabLinks();
   const initial = (me.displayName || '?').trim().charAt(0).toUpperCase();
   const titles = {
     dialer:   ['Dialer', 'Internet calls, SIM gateway and PSTN — honest routing shown before you dial.'],
     sms:      ['Messages', 'Real SMS from your own SIM via your paired Android.'],
     devices:  ['Devices', 'Your paired Android gateways and their live status.'],
+    gateway:  ['SMS Gateway', 'Let third-party services send SMS from your SIM with a username and password.'],
     connect:  ['Connect', 'API keys that let other apps and services use your number.'],
     contacts: ['Contacts', 'People on OpenCall — free internet calls to anyone here.'],
     history:  ['Call history', 'Every call with its real route and outcome.'],
@@ -1959,6 +2049,7 @@ function renderApp() {
           ['history','🕘','History'],
           ['contacts','👥','Contacts'],
           ['devices','🤖','Devices'],
+          ['gateway','📡','SMS Gateway'],
           ['connect','🔌','Connect'],
           ['links','🔗','Links'],
         ].map(([id, ico, name]) => `<button class="sidebtn ${tab===id?'on':''}" onclick="setTab('${id}')">
@@ -2354,6 +2445,115 @@ function tabConnect() {
   </div>`;
 }
 
+/* ---------------- SMS Gateway tab: username/password gateway like sms-gate ---------------- */
+function tabSmsGateway() {
+  const on = !!(smsGw && smsGw.enabled);
+  const devices = deviceList || [];
+  const boundName = on && smsGw.deviceName ? `${smsGw.deviceName}${smsGw.deviceNumber ? ' · ' + smsGw.deviceNumber : ''}` : null;
+  const boundOnline = on && smsGw.deviceOnline === true;
+  return `
+  <div class="card">
+    <h2>SMS Gateway ${on ? '<span class="pill sent">active</span>' : '<span class="pill queued">off</span>'}</h2>
+    <p class="muted">Turn your Android phone into a <strong>cloud SMS gateway</strong> — like SMS Gate. Any third-party service (CRM, n8n, Zapier, your own backend) sends real SMS <em>from your SIM</em> by logging in with a <strong>username + password</strong> you create here. Requests arrive over the internet, your phone dials them out over the cellular network, and every request is logged below.</p>
+
+    ${!on ? `
+    <label class="label">Gateway username — what third-party services log in with</label>
+    <input class="input" id="gw-username" placeholder="e.g. my-sms-gateway" value="${esc(gwUsername)}" oninput="gwUsername=this.value" autocomplete="off">
+    <label class="label">Password — leave empty to auto-generate a strong one</label>
+    <input class="input" id="gw-password" type="password" placeholder="min 8 characters (recommended: auto-generate)" value="${esc(gwPassword)}" oninput="gwPassword=this.value" autocomplete="new-password">
+    <label class="label">Sending phone — the SIM SMS go out from</label>
+    ${devices.length === 0
+      ? '<div class="empty"><div class="eico">🤖</div><div class="etitle">No phone paired</div><div class="ehint">Pair your Android in the Devices tab first — the gateway needs a phone to send from.</div></div>'
+      : `<select class="input" onchange="gwDeviceSel=this.value">
+          <option value="">— choose a paired phone —</option>
+          ${devices.map(d => `<option value="${d.id}" ${gwDeviceSel === d.id ? 'selected' : ''}>${esc(d.name)}${d.sim_number ? ' · ' + esc(d.sim_number) : ''}${d.online ? ' · 🟢 online' : ' · offline'}</option>`).join('')}
+        </select>`}
+    <label class="row" style="gap:8px;margin-top:12px;align-items:center;cursor:pointer">
+      <input type="checkbox" ${gwAnyDevice ? 'checked' : ''} onchange="gwAnyDevice=this.checked">
+      <span class="tiny">Allow fallback to any other online device if the chosen phone is offline</span>
+    </label>
+    <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="setupSmsGw()" ${devices.length === 0 ? 'disabled' : ''}>⚡ Enable SMS Gateway</button>
+    <div id="app-err"></div>
+    ` : `
+    <div class="keygrid" style="margin-top:12px">
+      <div><div class="tiny muted">Username</div><strong style="font-family:monospace">${esc(smsGw.username)}</strong></div>
+      <div><div class="tiny muted">Password</div><strong class="mint">•••••••••••• <span class="tiny muted">(hashed — regenerate by re-saving below)</span></strong></div>
+      <div><div class="tiny muted">Sending phone</div><strong>${esc(boundName || '—')} ${boundOnline ? '<span class="pill sent">online</span>' : '<span class="pill failed">offline</span>'}</strong></div>
+      <div><div class="tiny muted">Fallback to any device</div><strong>${smsGw.anyDevice ? 'yes' : 'no'}</strong></div>
+      <div><div class="tiny muted">Requests</div><strong>${smsGw.requestCount ?? 0}</strong></div>
+      <div><div class="tiny muted">Sent / failed</div><strong>${smsGw.sentCount ?? 0} / ${smsGw.failedCount ?? 0}</strong></div>
+    </div>
+
+    ${freshGwPassword ? `<div class="keybox" id="fresh-gw">
+      <strong class="mint">⚠ Copy your password now — it will never be shown again</strong>
+      <input class="input" style="margin-top:8px;font-family:monospace;font-size:.8rem" readonly value="${esc(freshGwPassword.password)}" onclick="this.select()">
+      <div class="row" style="margin-top:8px">
+        <button class="btn btn-primary" onclick="copyText('${jsArg(freshGwPassword.password)}','Password copied')">Copy password</button>
+        <button class="btn btn-ghost" onclick="freshGwPassword=null;renderApp()">Done — I saved it</button>
+      </div>
+      <div class="tiny" style="margin-top:6px">Only a SHA-256 hash is stored. If you lose it, re-save the gateway with a new password.</div>
+    </div>` : ''}
+
+    <div class="row" style="margin-top:14px">
+      <button class="btn btn-ghost" onclick="refreshSmsGw();refreshGwLog()">↻ Refresh</button>
+      <button class="btn btn-ghost" style="color:#fca5a5" onclick="disableSmsGw()">Disable gateway</button>
+    </div>
+
+    <div style="margin-top:16px">
+      <div class="row between"><h2>Re-save credentials (rotate)</h2></div>
+      <p class="tiny muted">Change the username, password or bound phone — third-party services must use the new credentials immediately after saving.</p>
+      <label class="label">New username</label>
+      <input class="input" placeholder="${esc(smsGw.username)}" value="${esc(gwUsername)}" oninput="gwUsername=this.value" autocomplete="off">
+      <label class="label">New password — empty = auto-generate</label>
+      <input class="input" type="password" placeholder="min 8 characters" value="${esc(gwPassword)}" oninput="gwPassword=this.value" autocomplete="new-password">
+      <label class="label">Sending phone</label>
+      <select class="input" onchange="gwDeviceSel=this.value">
+        ${devices.map(d => `<option value="${d.id}" ${(gwDeviceSel || smsGw.deviceId) === d.id ? 'selected' : ''}>${esc(d.name)}${d.sim_number ? ' · ' + esc(d.sim_number) : ''}${d.online ? ' · 🟢 online' : ' · offline'}</option>`).join('')}
+      </select>
+      <label class="row" style="gap:8px;margin-top:12px;align-items:center;cursor:pointer">
+        <input type="checkbox" ${gwAnyDevice ? 'checked' : ''} onchange="gwAnyDevice=this.checked">
+        <span class="tiny">Allow fallback to any other online device</span>
+      </label>
+      <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="setupSmsGw()">💾 Save new credentials</button>
+      <div id="app-err"></div>
+    </div>`}
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h2>Use it from any service</h2>
+    ${!on ? '<div class="empty"><div class="eico">📡</div><div class="etitle">Gateway is off</div><div class="ehint">Enable it above — copy-paste API examples with your credentials filled in will appear here.</div></div>' : `
+    <p class="tiny" style="margin:0 0 6px">Every request is a POST to the OpenCall REST endpoint with the public project <code>apikey</code> header and your gateway credentials in the payload. Works from any language or automation platform. Rate limit: <strong>120 requests/minute</strong>.</p>
+    <label class="label">1 · Log in (optional — get a 24 h token)</label>
+    <button class="copybtn" onclick="copyText(gwExample('login'))">Copy</button>
+    <pre class="code">${esc(gwExample('login'))}</pre>
+    <label class="label">2 · Send an SMS from your SIM</label>
+    <button class="copybtn" onclick="copyText(gwExample('send'))">Copy</button>
+    <pre class="code">${esc(gwExample('send'))}</pre>
+    <label class="label">3 · Check the gateway status</label>
+    <button class="copybtn" onclick="copyText(gwExample('status'))">Copy</button>
+    <pre class="code">${esc(gwExample('status'))}</pre>
+    <label class="label">4 · Read recent messages</label>
+    <button class="copybtn" onclick="copyText(gwExample('getsms'))">Copy</button>
+    <pre class="code">${esc(gwExample('getsms'))}</pre>
+    <p class="tiny" style="margin:10px 0 0;color:#fca5a5"><strong>Honest limits:</strong> the password is shown once at setup (only a hash is stored) · sends are routed to the bound phone first · destination must be E.164 (+country…) · body 1–1600 chars · the phone must be online (gateway app running) for sends to queue.</p>`}
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="row between"><h2>API activity log</h2><button class="btn btn-ghost" onclick="refreshGwLog()">↻</button></div>
+    ${!smsGwLogLoaded ? '<div class="empty"><div class="eico">🕘</div><div class="etitle">Loading log…</div></div>' :
+      smsGwLog.length === 0 ? '<div class="empty"><div class="eico">📡</div><div class="etitle">No API activity yet</div><div class="ehint">Every successful login, send and status check made with your gateway credentials will appear here. (Failed attempts are rejected before anything is recorded.)</div></div>' : `
+      <div class="tablewrap"><table><thead><tr><th>When</th><th>Action</th><th>Result</th><th>Detail</th></tr></thead><tbody>
+      ${smsGwLog.map(l => `
+        <tr>
+          <td class="tiny">${relTime(l.created_at)}</td>
+          <td class="tiny">${esc(l.action)}</td>
+          <td>${l.ok ? '<span class="pill sent">ok</span>' : '<span class="pill failed">denied</span>'}</td>
+          <td class="tiny" style="font-family:monospace">${esc(JSON.stringify(l.detail || {}).slice(0, 90))}</td>
+        </tr>`).join('')}
+      </tbody></table></div>`}
+  </div>`;
+}
+
 function tabContacts() {
   return `
   <div class="card">
@@ -2410,7 +2610,7 @@ function tabLinks() {
 }
 
 /* ---------------- UI helpers ---------------- */
-function setTab(t) { tab = t; renderApp(); if (t === 'connect' && !apiKeysLoaded) refreshApiKeys(); }
+function setTab(t) { tab = t; renderApp(); if (t === 'connect' && !apiKeysLoaded) refreshApiKeys(); if (t === 'gateway' && !smsGwLoaded) refreshSmsGw(); if (t === 'gateway' && !smsGwLogLoaded) refreshGwLog(); }
 function dialUser(id) { dial = id; tab = 'dialer'; renderApp(); placeCall(id); }
 // AUDIT FIX: removed dead emptyState() helper — every empty state in the app
 // is written inline with literal HTML; this generic helper was never called.
