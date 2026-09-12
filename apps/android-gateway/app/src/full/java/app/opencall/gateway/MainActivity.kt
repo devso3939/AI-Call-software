@@ -65,6 +65,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bgManageBtn: Button
     private lateinit var agentToggle: Button
 
+    // 1.5.17 — SMS Gateway credentials card: the phone itself creates the
+    // username/password that third-party services (e.g. SmartBookly) use
+    // to send SMS through this SIM via the cloud API.
+    private lateinit var gwText: TextView
+    private lateinit var gwUserInput: EditText
+    private lateinit var gwCreateBtn: Button
+    private lateinit var gwStatusBtn: Button
+
     // 1.5.8 — "Display over other apps" row: grants SYSTEM_ALERT_WINDOW,
     // which EXEMPTS the app from the Android 10+ background-activity-start
     // ban. Without it the silent-dialer fallback (pressing Home over the
@@ -405,6 +413,18 @@ class MainActivity : AppCompatActivity() {
         bgCard.addView(bgOverlayBtn)
         bgCard.addView(agentToggle)
 
+        // --- 1.5.17: SMS Gateway credentials card ---
+        gwText = TextView(this).apply {
+            textSize = 12f
+            setPadding(pad, 4, pad, 0)
+        }
+        gwUserInput = EditText(this).apply {
+            hint = "Gateway username (e.g. smartbookly)"
+            setPadding(pad, pad / 2, pad, pad / 2)
+        }
+        gwCreateBtn = button("Create / rotate gateway credentials") { doGatewaySetup() }
+        gwStatusBtn = button("Gateway status") { doGatewayStatus() }
+
         codeInput = EditText(this).apply {
             hint = "6-digit pairing code (from Devices tab)"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
@@ -472,6 +492,14 @@ class MainActivity : AppCompatActivity() {
                 addView(installHelpBtn)
                 addView(permBox)
                 addView(bgCard)
+                addView(TextView(this@MainActivity).apply {
+                    text = "SMS Gateway (for other apps/services)"
+                    setPadding(pad, pad, pad, 4)
+                })
+                addView(gwText)
+                addView(gwUserInput)
+                addView(gwCreateBtn)
+                addView(gwStatusBtn)
                 addView(codeInput)
                 addView(simInput)
                 addView(simBtn)
@@ -607,6 +635,85 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    /**
+     * 1.5.17 — create/rotate the SMS gateway credentials (username +
+     * auto-generated password) for this phone's owner, authenticated with
+     * the device pairing secret. The password is shown ONCE in a dialog
+     * and stored encrypted on this phone so it can be re-shown.
+     */
+    private fun doGatewaySetup() {
+        if (!DeviceStore.isPaired(this)) { toast("Pair first"); return }
+        val user = gwUserInput.text.toString().trim()
+        if (!user.matches(Regex("^[a-z0-9][a-z0-9._-]{2,39}$"))) {
+            toast("Username: 3-40 chars, lowercase letters/digits/dot/dash/underscore"); return
+        }
+        gwCreateBtn.isEnabled = false
+        Thread {
+            try {
+                val res = Rpc.rpc(
+                    "gateway_setup_from_device",
+                    JSONObject()
+                        .put("p_device_id", DeviceStore.deviceId(this))
+                        .put("p_device_secret", DeviceStore.secret(this))
+                        .put("p_username", user),
+                ) ?: throw Exception("empty response")
+                val pw = res.optString("password")
+                DeviceStore.saveGatewayCreds(this, res.optString("username"), pw)
+                log("✔ gateway credentials created: ${res.optString("username")}")
+                runOnUiThread {
+                    AlertDialog.Builder(this)
+                        .setTitle("Gateway credentials ready")
+                        .setMessage(
+                            "Username: ${res.optString("username")}\n" +
+                            "Password: $pw\n\n" +
+                            "⚠ Copy the password NOW — enter this username + " +
+                            "password in the app/service that will send SMS " +
+                            "(e.g. SmartBookly)."
+                        )
+                        .setPositiveButton("Done", null)
+                        .show()
+                    refresh()
+                }
+            } catch (e: Exception) {
+                log("✘ gateway setup failed: ${e.message}")
+                toast("Gateway setup failed: ${e.message}")
+            } finally {
+                runOnUiThread { gwCreateBtn.isEnabled = true }
+            }
+        }.start()
+    }
+
+    /** 1.5.17 — show whether the gateway account is enabled + usage. */
+    private fun doGatewayStatus() {
+        if (!DeviceStore.isPaired(this)) { toast("Pair first"); return }
+        Thread {
+            try {
+                val res = Rpc.rpc(
+                    "gateway_status_from_device",
+                    JSONObject()
+                        .put("p_device_id", DeviceStore.deviceId(this))
+                        .put("p_device_secret", DeviceStore.secret(this)),
+                ) ?: throw Exception("empty response")
+                val enabled = res.optBoolean("enabled")
+                val msg = if (enabled) {
+                    "Gateway: ON\nUsername: ${res.optString("username")}\n" +
+                    "Sent: ${res.optLong("sentTotal")} · Failed: ${res.optLong("failedTotal")}"
+                } else "Gateway: OFF — tap \"Create / rotate gateway credentials\" to enable"
+                log("gateway status: ${if (enabled) "on" else "off"}")
+                runOnUiThread {
+                    AlertDialog.Builder(this)
+                        .setTitle("SMS Gateway")
+                        .setMessage(msg)
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            } catch (e: Exception) {
+                log("✘ gateway status failed: ${e.message}")
+                toast("Gateway status failed: ${e.message}")
+            }
+        }.start()
+    }
+
     private fun refresh() {
         renderPermRows()
         renderBackgroundCard()
@@ -643,6 +750,21 @@ class MainActivity : AppCompatActivity() {
         startBtn.isEnabled = paired && !svcRunning
         stopBtn.isEnabled = svcRunning
         unpairBtn.isEnabled = paired
+
+        // 1.5.17 — gateway card only makes sense once paired
+        val gwEnabled = paired && !DeviceStore.gatewayUsername(this).isNullOrBlank()
+        gwText.text = if (!paired) {
+            "Pair this phone first — then create gateway credentials here."
+        } else if (gwEnabled) {
+            "Gateway ON — username: ${DeviceStore.gatewayUsername(this)}. Paste this " +
+                "username + password into the service that will send SMS (e.g. SmartBookly)."
+        } else {
+            "Create a username + password here so third-party services can send SMS " +
+                "from this phone's SIM through the OpenCall cloud."
+        }
+        gwUserInput.visibility = if (paired) View.VISIBLE else View.GONE
+        gwCreateBtn.isEnabled = paired
+        gwStatusBtn.isEnabled = paired
     }
 
     private companion object {

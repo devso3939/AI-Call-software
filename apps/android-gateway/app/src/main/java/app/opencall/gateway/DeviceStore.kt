@@ -49,6 +49,17 @@ object DeviceStore {
         prefs(ctx).edit().putString("simNumber", number.trim()).apply()
     }
 
+    // ---- 1.5.17 SMS gateway credentials (created on this phone, shown to
+    //      the owner so they can paste them into third-party services) ----
+    fun gatewayUsername(ctx: Context): String? = prefs(ctx).getString("gwUsername", null)?.takeIf { it.isNotBlank() }
+    fun gatewayPassword(ctx: Context): String? = prefs(ctx).getString("gwPassword", null)?.takeIf { it.isNotBlank() }
+    fun saveGatewayCreds(ctx: Context, username: String, password: String) {
+        prefs(ctx).edit()
+            .putString("gwUsername", username.trim())
+            .putString("gwPassword", password.trim())
+            .apply()
+    }
+
     // ---- last signaling seq per call (survives service restarts) ----
     fun sigSeq(ctx: Context, callId: String): Int = prefs(ctx).getInt("sig_$callId", 0)
     fun saveSigSeq(ctx: Context, callId: String, seq: Int) {

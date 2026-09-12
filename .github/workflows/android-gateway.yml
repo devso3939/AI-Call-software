@@ -93,12 +93,19 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.16 · versionCode 23). Two APKs:
+            build (v1.5.17 · versionCode 24). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.17 highlights — gateway credentials on the phone itself
+            **The gateway app can now create its own SMS gateway credentials:**
+            - **New "SMS Gateway" section in the app** — type a username, tap "Create / rotate gateway credentials", and the phone generates a strong password (authenticated with the pairing secret — no web login needed).
+            - **Password shown in a dialog + stored encrypted** on the phone; paste the username + password into any third-party service (e.g. SmartBookly) to send SMS from this SIM via `gateway_api_send_sms` (or `gateway_api_login` for a 24-hour token).
+            - **Gateway status button** — shows whether the gateway is enabled and its sent/failed counters.
+            - **New device RPCs** — `gateway_setup_from_device` and `gateway_status_from_device` (migration 015), mirroring the web-app setup but authenticated with the device secret.
 
             ### v1.5.16 highlights — SMS Gateway (sms-gate style API)
             **New feature — turn your phone into a cloud SMS gateway:**
