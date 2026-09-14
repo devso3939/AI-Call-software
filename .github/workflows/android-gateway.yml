@@ -93,12 +93,17 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.19 · versionCode 26). Two APKs:
+            build (v1.5.20 · versionCode 27). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.20 highlights — the gateway keeps itself alive
+            - **Auto-start on app open and after reboot / app update** — no more dead gateway after the phone restarts.
+            - Server side: sends are only accepted when a phone is actually live (heartbeat ≤ 2 min); otherwise the caller gets an honest "no gateway device online" error immediately.
+            - Stuck messages older than 10 minutes are automatically marked failed with a clear reason instead of queueing forever.
 
             ### v1.5.19 highlights — one honest status everywhere
             **Battery/online status is now live, real and synchronized:**

@@ -93,6 +93,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 1.5.20 AUTO-START: whenever the app is opened and the phone is
+        // paired, make sure the gateway service is running. This is what
+        // went wrong today: the service had died (reboot / Android kill),
+        // the phone stopped heartbeating, and third-party sends sat
+        // "queued" forever. Opening the app now ALWAYS revives the gateway.
+        if (DeviceStore.isPaired(this)) GatewayService.start(this)
         refresh()
         autoDetectSim() // re-try after the permission dialog closes
         // 1.5.13 — after the user returns from the "Display over other
