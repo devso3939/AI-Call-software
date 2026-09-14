@@ -93,12 +93,17 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.21 · versionCode 28). Two APKs:
+            build (v1.5.23 · versionCode 30). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.23 highlights — credentials always visible
+            - "Show my credentials" now shows the real password straight from the server (encrypted server-side, migration 022)
+            - Password always matches the web tab and SmartBookly, even after rotation from either side
+            - Server: bulk SMS endpoint (up to 500 messages in ONE request, all-or-nothing validation, single rate-limit hit)
 
             ### v1.5.21 highlights — simpler, clearer gateway setup
             - Step-by-step SMS Gateway card (pair → create credentials → paste into SmartBookly)

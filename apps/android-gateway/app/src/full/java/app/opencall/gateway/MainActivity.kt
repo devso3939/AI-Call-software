@@ -737,12 +737,17 @@ class MainActivity : AppCompatActivity() {
                 val batt = if (res.isNull("battery")) null else res.optInt("battery")
                 // 1.5.21 UI/UX: stored credentials shown directly — the user
                 // no longer has to guess where the username/password live.
-                val savedUser = DeviceStore.gatewayUsername(this)
-                val savedPw = DeviceStore.gatewayPassword(this)
+                // 1.5.23 VISIBLE CREDS: the password now comes from the server
+                // (stored encrypted server-side, migration 022) so it always
+                // matches what SmartBookly uses, even after a web-side rotation.
+                val serverPw = res.optString("password", "").takeIf { it.isNotBlank() }
+                val savedUser = DeviceStore.gatewayUsername(this) ?: res.optString("username", "")
+                val savedPw = serverPw ?: DeviceStore.gatewayPassword(this)
                 val msg = if (enabled) {
                     "✅ Gateway is ON\n\n" +
                     "Username: ${res.optString("username")}\n" +
                     (if (savedPw != null) "Password: $savedPw\n" else "") +
+                    (if (serverPw == null) "\n(password not yet stored server-side — re-save credentials once to enable this)\n" else "") +
                     "\nThis phone: ${if (online) "🟢 online" else "🔴 offline (gateway service not running — tap Start gateway)"}" +
                     (if (batt != null) " · battery $batt%" else "") + "\n" +
                     "Sent: ${res.optLong("sentTotal")} · Failed: ${res.optLong("failedTotal")}\n\n" +
