@@ -1131,6 +1131,11 @@ async function refreshSmsGw() {
   if (me) renderApp();
 }
 
+/* UX FIX (1.5.21): while the SMS Gateway tab is open, poll every 15 s so the
+   online/battery status flips to live as soon as the phone starts heartbeating
+   — the user should not have to reload the page. */
+setInterval(() => { if (me && tab === 'gateway') { refreshSmsGw(); } }, 15000);
+
 async function refreshGwLog() {
   const { data, error } = await sb.rpc('get_gateway_api_log', { p_limit: 50 });
   if (!error && data) { smsGwLog = data; smsGwLogLoaded = true; }
@@ -1139,8 +1144,21 @@ async function refreshGwLog() {
 
 async function setupSmsGw() {
   setError('');
+  // UX FIX (1.5.21): preselect the bound (or only) device automatically —
+  // the user should not have to "pick a phone" just to enable the gateway.
+  // The old code blocked with "Pick which phone the gateway sends from."
+  // even when exactly one paired phone existed.
+  if (!gwDeviceSel) {
+    const bound = smsGw && smsGw.deviceId;
+    const online = (gatewayDevices || []).filter(d => d.online && d.last_seen_at && (Date.now() - new Date(d.last_seen_at).getTime()) < 120000);
+    if (bound) gwDeviceSel = bound;
+    else if (online.length === 1) gwDeviceSel = online[0].id;
+    else if ((gatewayDevices || []).length === 1) gwDeviceSel = gatewayDevices[0].id;
+  }
   const devId = (gwDeviceSel || '').trim();
-  if (!devId) return setError('Pick which phone the gateway sends from.');
+  if (!devId) return setError(gatewayDevices && gatewayDevices.length
+    ? 'Pick which phone the gateway sends from.'
+    : 'No phone paired yet — pair your Android in the Devices tab first.');
   const uname = (gwUsername || '').trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(uname))
     return setError('Username: 3–40 chars — lowercase letters, digits, dot, dash, underscore.');
@@ -2466,23 +2484,25 @@ function tabSmsGateway() {
     <p class="muted">Turn your Android phone into a <strong>cloud SMS gateway</strong> — like SMS Gate. Any third-party service (CRM, n8n, Zapier, your own backend) sends real SMS <em>from your SIM</em> by logging in with a <strong>username + password</strong> you create here. Requests arrive over the internet, your phone dials them out over the cellular network, and every request is logged below.</p>
 
     ${!on ? `
+    ${devices.length === 0 ? `
+    <div class="empty" style="margin-top:12px"><div class="eico">🤖</div><div class="etitle">First: pair your Android phone</div><div class="ehint">The gateway needs a phone to send from. Open the <strong>Devices</strong> tab, install the gateway app on your Android and pair it — then come back here and one tap enables everything.</div></div>
+    ` : `
     <label class="label">Gateway username — what third-party services log in with</label>
     <input class="input" id="gw-username" placeholder="e.g. my-sms-gateway" value="${esc(gwUsername)}" oninput="gwUsername=this.value" autocomplete="off">
     <label class="label">Password — leave empty to auto-generate a strong one</label>
     <input class="input" id="gw-password" type="password" placeholder="min 8 characters (recommended: auto-generate)" value="${esc(gwPassword)}" oninput="gwPassword=this.value" autocomplete="new-password">
     <label class="label">Sending phone — the SIM SMS go out from</label>
-    ${devices.length === 0
-      ? '<div class="empty"><div class="eico">🤖</div><div class="etitle">No phone paired</div><div class="ehint">Pair your Android in the Devices tab first — the gateway needs a phone to send from.</div></div>'
-      : `<select class="input" onchange="gwDeviceSel=this.value">
-          <option value="">— choose a paired phone —</option>
-          ${devices.map(d => `<option value="${d.id}" ${gwDeviceSel === d.id ? 'selected' : ''}>${esc(d.name)}${d.sim_number ? ' · ' + esc(d.sim_number) : ''}${d.online ? ' · 🟢 online' : ' · offline'}</option>`).join('')}
-        </select>`}
+    <select class="input" onchange="gwDeviceSel=this.value">
+      <option value="">— choose a paired phone —</option>
+      ${devices.map(d => `<option value="${d.id}" ${gwDeviceSel === d.id ? 'selected' : ''}>${esc(d.name)}${d.sim_number ? ' · ' + esc(d.sim_number) : ''}${d.online ? ' · 🟢 online' : ' · offline'}</option>`).join('')}
+    </select>
     <label class="row" style="gap:8px;margin-top:12px;align-items:center;cursor:pointer">
       <input type="checkbox" ${gwAnyDevice ? 'checked' : ''} onchange="gwAnyDevice=this.checked">
       <span class="tiny">Allow fallback to any other online device if the chosen phone is offline</span>
     </label>
-    <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="setupSmsGw()" ${devices.length === 0 ? 'disabled' : ''}>⚡ Enable SMS Gateway</button>
+    <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="setupSmsGw()">⚡ Enable SMS Gateway</button>
     <div id="app-err"></div>
+    `}
     ` : `
     <div class="keygrid" style="margin-top:12px">
       <div><div class="tiny muted">Username</div><strong style="font-family:monospace">${esc(smsGw.username)}</strong></div>
@@ -2495,6 +2515,18 @@ function tabSmsGateway() {
       <div><div class="tiny muted">Requests</div><strong>${smsGw.requestCount ?? 0}</strong></div>
       <div><div class="tiny muted">Sent / failed</div><strong>${smsGw.sentCount ?? 0} / ${smsGw.failedCount ?? 0}</strong></div>
     </div>
+
+    ${!boundOnline ? `
+    <div class="keybox" style="border-color:#fbbf24;margin-top:12px">
+      <strong style="color:#fbbf24">⚠ Your phone is not connected right now</strong>
+      <div class="tiny" style="margin-top:6px">Third-party sends will fail until the gateway app is running on <strong>${esc(boundName || 'your phone')}</strong>. Do this on the phone:
+        <ol style="margin:6px 0 0 18px;padding:0">
+          <li>Open the <strong>OpenCall Gateway</strong> app (it auto-starts the service and shows a green "Gateway running" status)</li>
+          <li>Allow the notification permission if Android asks — it keeps the service alive in the background</li>
+          <li>Disable battery optimization for the app (Android Settings → Battery → App launch)</li>
+        </ol>
+        This page updates automatically — no reload needed.</div>
+    </div>` : ''}
 
     ${freshGwPassword ? `<div class="keybox" id="fresh-gw">
       <strong class="mint">⚠ Copy your password now — it will never be shown again</strong>

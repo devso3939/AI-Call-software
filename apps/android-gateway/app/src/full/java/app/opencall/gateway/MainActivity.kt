@@ -69,6 +69,7 @@ class MainActivity : AppCompatActivity() {
     // username/password that third-party services (e.g. SmartBookly) use
     // to send SMS through this SIM via the cloud API.
     private lateinit var gwText: TextView
+    private lateinit var gwTitle: TextView
     private lateinit var gwUserInput: EditText
     private lateinit var gwCreateBtn: Button
     private lateinit var gwStatusBtn: Button
@@ -419,17 +420,24 @@ class MainActivity : AppCompatActivity() {
         bgCard.addView(bgOverlayBtn)
         bgCard.addView(agentToggle)
 
-        // --- 1.5.17: SMS Gateway credentials card ---
+        // 1.5.17: SMS Gateway credentials card — 1.5.21 UI/UX: bigger title,
+        // status line first, single clear primary action.
+        gwTitle = TextView(this).apply {
+            text = "📡 SMS Gateway"
+            textSize = 16f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(pad, 8, pad, 4)
+        }
         gwText = TextView(this).apply {
-            textSize = 12f
-            setPadding(pad, 4, pad, 0)
+            textSize = 13f
+            setPadding(pad, 4, pad, 4)
         }
         gwUserInput = EditText(this).apply {
-            hint = "Gateway username (e.g. smartbookly)"
+            hint = "Choose a username (e.g. smartbookly)"
             setPadding(pad, pad / 2, pad, pad / 2)
         }
-        gwCreateBtn = button("Create / rotate gateway credentials") { doGatewaySetup() }
-        gwStatusBtn = button("Gateway status") { doGatewayStatus() }
+        gwCreateBtn = button("⚡ Create gateway credentials") { doGatewaySetup() }
+        gwStatusBtn = button("📋 Show my credentials") { doGatewayStatus() }
 
         codeInput = EditText(this).apply {
             hint = "6-digit pairing code (from Devices tab)"
@@ -502,6 +510,7 @@ class MainActivity : AppCompatActivity() {
                     text = "SMS Gateway (for other apps/services)"
                     setPadding(pad, pad, pad, 4)
                 })
+                addView(gwTitle)
                 addView(gwText)
                 addView(gwUserInput)
                 addView(gwCreateBtn)
@@ -726,12 +735,19 @@ class MainActivity : AppCompatActivity() {
                 // freshness rule — battery is null when the heartbeat is stale).
                 val online = res.optBoolean("online")
                 val batt = if (res.isNull("battery")) null else res.optInt("battery")
+                // 1.5.21 UI/UX: stored credentials shown directly — the user
+                // no longer has to guess where the username/password live.
+                val savedUser = DeviceStore.gatewayUsername(this)
+                val savedPw = DeviceStore.gatewayPassword(this)
                 val msg = if (enabled) {
-                    "Gateway: ON\nUsername: ${res.optString("username")}\n" +
-                    "This phone: ${if (online) "🟢 online" else "offline (no fresh heartbeat)"}" +
+                    "✅ Gateway is ON\n\n" +
+                    "Username: ${res.optString("username")}\n" +
+                    (if (savedPw != null) "Password: $savedPw\n" else "") +
+                    "\nThis phone: ${if (online) "🟢 online" else "🔴 offline (gateway service not running — tap Start gateway)"}" +
                     (if (batt != null) " · battery $batt%" else "") + "\n" +
-                    "Sent: ${res.optLong("sentTotal")} · Failed: ${res.optLong("failedTotal")}"
-                } else "Gateway: OFF — tap \"Create / rotate gateway credentials\" to enable"
+                    "Sent: ${res.optLong("sentTotal")} · Failed: ${res.optLong("failedTotal")}\n\n" +
+                    "Paste this username + password into the service that sends SMS (e.g. SmartBookly)."
+                } else "❌ Gateway is OFF\n\nTap \"⚡ Create gateway credentials\" to enable it."
                 log("gateway status: ${if (enabled) "on" else "off"}")
                 runOnUiThread {
                     AlertDialog.Builder(this)
@@ -784,16 +800,16 @@ class MainActivity : AppCompatActivity() {
         stopBtn.isEnabled = svcRunning
         unpairBtn.isEnabled = paired
 
-        // 1.5.17 — gateway card only makes sense once paired
+        // 1.5.17 — gateway card only makes sense once paired (1.5.21: clearer copy)
         val gwEnabled = paired && !DeviceStore.gatewayUsername(this).isNullOrBlank()
+        gwTitle.text = if (svcRunning) "📡 SMS Gateway — 🟢 service running" else "📡 SMS Gateway"
         gwText.text = if (!paired) {
-            "Pair this phone first — then create gateway credentials here."
+            "1️⃣ Pair this phone first (type the 6-digit code below).\n2️⃣ Then create gateway credentials here."
         } else if (gwEnabled) {
-            "Gateway ON — username: ${DeviceStore.gatewayUsername(this)}. Paste this " +
-                "username + password into the service that will send SMS (e.g. SmartBookly)."
+            "✅ Gateway ON — username: ${DeviceStore.gatewayUsername(this)}\n" +
+                "Tap \"📋 Show my credentials\" to see the username + password to paste into SmartBookly."
         } else {
-            "Create a username + password here so third-party services can send SMS " +
-                "from this phone's SIM through the OpenCall cloud."
+            "Create a username here → we generate a strong password → paste both into the service that will send SMS (e.g. SmartBookly)."
         }
         gwUserInput.visibility = if (paired) View.VISIBLE else View.GONE
         gwCreateBtn.isEnabled = paired
