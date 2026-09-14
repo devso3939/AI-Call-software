@@ -580,7 +580,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+    // CRASH FIX (1.5.18): Toast.show() from a background thread (no Looper)
+    // throws "Can't create handler inside thread that has not called
+    // Looper.prepare()" and kills the whole app — this is what made the app
+    // close when "Create / rotate gateway credentials" hit an error. Route
+    // every toast through the UI thread so it is safe from anywhere.
+    private fun toast(msg: String) = runOnUiThread {
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+    }
+
+    /** Visible error dialog on the UI thread — used for gateway actions so a
+     *  failure can be screenshotted instead of silently killing the app. */
+    private fun errorDialog(title: String, e: Exception) {
+        log("✘ $title: ${e.message}")
+        runOnUiThread {
+            AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(e.message ?: "unknown error")
+                .setPositiveButton("OK", null)
+                .show()
+        }
+    }
 
     /**
      * Gateway holds READ_PHONE_STATE, so we can usually read the SIM's own
@@ -627,8 +647,8 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { codeInput.setText(""); refresh() }
                 GatewayService.start(this)
             } catch (e: Exception) {
-                log("✘ pairing failed: ${e.message}")
-                toast("Pairing failed: ${e.message}")
+                // 1.5.18: dialog instead of toast so the real error is visible
+                errorDialog("Pairing failed", e)
             } finally {
                 runOnUiThread { pairBtn.isEnabled = true }
             }
@@ -675,8 +695,8 @@ class MainActivity : AppCompatActivity() {
                     refresh()
                 }
             } catch (e: Exception) {
-                log("✘ gateway setup failed: ${e.message}")
-                toast("Gateway setup failed: ${e.message}")
+                // 1.5.18: dialog instead of toast so the real error is visible
+                errorDialog("Gateway setup failed", e)
             } finally {
                 runOnUiThread { gwCreateBtn.isEnabled = true }
             }
@@ -708,8 +728,8 @@ class MainActivity : AppCompatActivity() {
                         .show()
                 }
             } catch (e: Exception) {
-                log("✘ gateway status failed: ${e.message}")
-                toast("Gateway status failed: ${e.message}")
+                // 1.5.18: dialog instead of toast so the real error is visible
+                errorDialog("Gateway status failed", e)
             }
         }.start()
     }

@@ -93,12 +93,17 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.17 · versionCode 24). Two APKs:
+            build (v1.5.18 · versionCode 25). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.18 highlights — crash fix on gateway credential creation
+            **The app no longer closes when a gateway action hits an error:**
+            - **Fixed the crash** on "Create / rotate gateway credentials", "Gateway status" and "Pair this phone": errors were shown with a toast from a background thread, which Android does not allow — the app closed instantly. Errors now show a clear dialog with the actual message.
+            - No behavior change on success — setup, status and pairing work exactly as in v1.5.17.
 
             ### v1.5.17 highlights — gateway credentials on the phone itself
             **The gateway app can now create its own SMS gateway credentials:**
