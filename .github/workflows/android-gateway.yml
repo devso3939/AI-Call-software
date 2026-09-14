@@ -93,12 +93,19 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.18 · versionCode 25). Two APKs:
+            build (v1.5.19 · versionCode 26). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.19 highlights — one honest status everywhere
+            **Battery/online status is now live, real and synchronized:**
+            - Battery is read from the phone's real battery sensor on every heartbeat (~every 5 s) — never hardcoded.
+            - A device counts as online only when its heartbeat is ≤ 2 minutes old; otherwise every surface (phone app, web tab, third-party APIs like SmartBookly) honestly shows offline with the last-seen time.
+            - Battery is only reported when fresh — a stale value is never presented as live.
+            - SMS sends refuse devices without a fresh heartbeat.
 
             ### v1.5.18 highlights — crash fix on gateway credential creation
             **The app no longer closes when a gateway action hits an error:**

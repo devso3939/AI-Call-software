@@ -715,8 +715,15 @@ class MainActivity : AppCompatActivity() {
                         .put("p_device_secret", DeviceStore.secret(this)),
                 ) ?: throw Exception("empty response")
                 val enabled = res.optBoolean("enabled")
+                // 1.5.19 SYNC: show the same honest online/battery the web
+                // tab and third-party APIs see (server applies a 2-minute
+                // freshness rule — battery is null when the heartbeat is stale).
+                val online = res.optBoolean("online")
+                val batt = if (res.isNull("battery")) null else res.optInt("battery")
                 val msg = if (enabled) {
                     "Gateway: ON\nUsername: ${res.optString("username")}\n" +
+                    "This phone: ${if (online) "🟢 online" else "offline (no fresh heartbeat)"}" +
+                    (if (batt != null) " · battery $batt%" else "") + "\n" +
                     "Sent: ${res.optLong("sentTotal")} · Failed: ${res.optLong("failedTotal")}"
                 } else "Gateway: OFF — tap \"Create / rotate gateway credentials\" to enable"
                 log("gateway status: ${if (enabled) "on" else "off"}")

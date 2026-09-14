@@ -2453,8 +2453,13 @@ function tabSmsGateway() {
   // The ReferenceError aborted the whole render, so clicking the SMS Gateway
   // tab appeared to do nothing. Use the real list.
   const devices = gatewayDevices || [];
+  // FRESHNESS SYNC (1.5.19): the server now computes honest online/battery
+  // (2-minute heartbeat rule) in get_sms_gateway — same truth the phone app
+  // and third-party APIs see. Use it directly instead of the raw DB flag.
   const boundName = on && smsGw.deviceName ? `${smsGw.deviceName}${smsGw.deviceNumber ? ' · ' + smsGw.deviceNumber : ''}` : null;
   const boundOnline = on && smsGw.deviceOnline === true;
+  const boundBattery = on && smsGw.deviceBattery != null ? `${smsGw.deviceBattery}%` : null;
+  const boundSeen = on && smsGw.deviceLastSeenAt ? relTime(smsGw.deviceLastSeenAt) : null;
   return `
   <div class="card">
     <h2>SMS Gateway ${on ? '<span class="pill sent">active</span>' : '<span class="pill queued">off</span>'}</h2>
@@ -2482,7 +2487,10 @@ function tabSmsGateway() {
     <div class="keygrid" style="margin-top:12px">
       <div><div class="tiny muted">Username</div><strong style="font-family:monospace">${esc(smsGw.username)}</strong></div>
       <div><div class="tiny muted">Password</div><strong class="mint">•••••••••••• <span class="tiny muted">(hashed — regenerate by re-saving below)</span></strong></div>
-      <div><div class="tiny muted">Sending phone</div><strong>${esc(boundName || '—')} ${boundOnline ? '<span class="pill sent">online</span>' : '<span class="pill failed">offline</span>'}</strong></div>
+      <div><div class="tiny muted">Sending phone</div><strong>${esc(boundName || '—')} ${boundOnline ? '<span class="pill sent">online</span>' : '<span class="pill failed">offline</span>'}</strong>
+        <div class="tiny muted">${boundOnline
+          ? (boundBattery ? `battery ${esc(boundBattery)}` : 'live') + (boundSeen ? ` · heartbeat ${esc(boundSeen)}` : '')
+          : (boundSeen ? `last heartbeat ${esc(boundSeen)} — open the gateway app on the phone` : 'no heartbeat yet')}</div></div>
       <div><div class="tiny muted">Fallback to any device</div><strong>${smsGw.anyDevice ? 'yes' : 'no'}</strong></div>
       <div><div class="tiny muted">Requests</div><strong>${smsGw.requestCount ?? 0}</strong></div>
       <div><div class="tiny muted">Sent / failed</div><strong>${smsGw.sentCount ?? 0} / ${smsGw.failedCount ?? 0}</strong></div>
