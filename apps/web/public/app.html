@@ -2448,7 +2448,11 @@ function tabConnect() {
 /* ---------------- SMS Gateway tab: username/password gateway like sms-gate ---------------- */
 function tabSmsGateway() {
   const on = !!(smsGw && smsGw.enabled);
-  const devices = deviceList || [];
+  // TAB-BLANK FIX (1.5.18): this function referenced "deviceList", a variable
+  // that never existed — the paired-device list lives in "gatewayDevices".
+  // The ReferenceError aborted the whole render, so clicking the SMS Gateway
+  // tab appeared to do nothing. Use the real list.
+  const devices = gatewayDevices || [];
   const boundName = on && smsGw.deviceName ? `${smsGw.deviceName}${smsGw.deviceNumber ? ' · ' + smsGw.deviceNumber : ''}` : null;
   const boundOnline = on && smsGw.deviceOnline === true;
   return `
