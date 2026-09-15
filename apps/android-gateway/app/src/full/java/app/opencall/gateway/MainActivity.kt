@@ -89,7 +89,29 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         buildUi()
-        startGrantFlow() // first pass — sequential dialogs for whatever is missing
+        // 1.5.25 — don't fire a stack of permission dialogs before the user
+        // has read a single word about what this app does. First launch shows
+        // a short explainer; "Continue" starts the sequential grant flow,
+        // "Later" defers (the rows stay tappable, onResume re-triggers).
+        val p = getSharedPreferences("gw", Context.MODE_PRIVATE)
+        if (p.getBoolean("permExplainerShown", false)) {
+            startGrantFlow()
+        } else {
+            p.edit().putBoolean("permExplainerShown", true).apply()
+            AlertDialog.Builder(this)
+                .setTitle("Why these permissions?")
+                .setMessage(
+                    "OpenCall Gateway turns this phone into an SMS + call relay controlled from your web app:\n\n" +
+                        "• SMS — send campaigns and relay replies from your SIM\n" +
+                        "• Phone — place calls and report live call status\n" +
+                        "• Notifications — alert you when a call comes in\n\n" +
+                        "Permissions are requested ONE at a time (some phones auto-deny batched dialogs). " +
+                        "Nothing leaves your gateway except your own traffic."
+                )
+                .setPositiveButton("Continue") { _, _ -> startGrantFlow() }
+                .setNegativeButton("Later", null)
+                .show()
+        }
     }
 
     override fun onResume() {
@@ -363,6 +385,17 @@ class MainActivity : AppCompatActivity() {
 
     // ============ UI ============
 
+    private lateinit var setupSection: LinearLayout
+    private lateinit var pairedSection: LinearLayout
+
+    private fun sectionTitle(text: String, pad: Int, big: Boolean = false): TextView =
+        TextView(this).apply {
+            this.text = text
+            textSize = if (big) 15f else 13f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(pad, pad, pad, 4)
+        }
+
     private fun buildUi() {
         val pad = (16 * resources.displayMetrics.density).toInt()
         statusText = TextView(this).apply {
@@ -498,38 +531,60 @@ class MainActivity : AppCompatActivity() {
         }
         logBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
+        // 1.5.25 — two top-level sections, toggled by refresh():
+        //  • setupSection (unpaired): the one-time pairing path — one input,
+        //    one button, one hint. Nothing else on screen.
+        //  • pairedSection (paired): permissions, background calls, gateway
+        //    credentials, SIM number, start/stop, unpair.
+        setupSection = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        setupSection.addView(sectionTitle("Setup", pad, big = true))
+        setupSection.addView(codeInput)
+        setupSection.addView(pairBtn)
+        setupSection.addView(TextView(this@MainActivity).apply {
+            text = "How it works: open the web app → Devices tab → Create pairing code → type it here. After pairing you'll set your SIM number and grant permissions."
+            textSize = 12f
+            setPadding(pad, 4, pad, pad)
+        })
+        setupSection.addView(installHelpBtn)
+
+        pairedSection = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        pairedSection.addView(grantBtn)
+        pairedSection.addView(permBox)
+        pairedSection.addView(bgCard)
+        pairedSection.addView(sectionTitle("SMS Gateway (for other apps/services)", pad, big = true))
+        pairedSection.addView(gwTitle)
+        pairedSection.addView(gwText)
+        pairedSection.addView(gwUserInput)
+        pairedSection.addView(gwCreateBtn)
+        pairedSection.addView(gwStatusBtn)
+        pairedSection.addView(simInput)
+        pairedSection.addView(simBtn)
+        pairedSection.addView(startBtn)
+        pairedSection.addView(stopBtn)
+        pairedSection.addView(sectionTitle("Danger zone", pad))
+        pairedSection.addView(unpairBtn)
+
         val root = ScrollView(this).apply {
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(statusText)
-                addView(grantBtn)
-                addView(installHelpBtn)
-                addView(permBox)
-                addView(bgCard)
-                addView(TextView(this@MainActivity).apply {
-                    text = "SMS Gateway (for other apps/services)"
-                    setPadding(pad, pad, pad, 4)
-                })
-                addView(gwTitle)
-                addView(gwText)
-                addView(gwUserInput)
-                addView(gwCreateBtn)
-                addView(gwStatusBtn)
-                addView(codeInput)
-                addView(simInput)
-                addView(simBtn)
-                addView(pairBtn)
-                addView(startBtn)
-                addView(stopBtn)
-                addView(unpairBtn)
+                // 1.5.25 — sectioned layout: Setup first (the one-time path),
+                // Gateway credentials + controls second, diagnostics last.
+                // Two containers whose visibility refresh() flips, so the
+                // layout survives pairing state changes without a rebuild.
+                addView(setupSection)
+                addView(pairedSection)
                 addView(TextView(this@MainActivity).apply {
                     text = "Activity log"
+                    textSize = 13f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
                     setPadding(pad, pad, pad, 4)
                 })
                 addView(logBox)
             })
         }
         setContentView(root)
+        refresh()
     }
 
     private fun renderPermRows() {
@@ -773,7 +828,13 @@ class MainActivity : AppCompatActivity() {
         renderBackgroundCard()
 
         val paired = DeviceStore.isPaired(this)
-        val svcRunning = GatewayRunning.isRunning
+        // 1.5.25 — GatewayRunning.isRunning is set in-process by the service,
+        // but Android can silently kill+restart the process (or the flag can
+        // go stale after a service restart). Cross-check with the system's
+        // list of active foreground services so the Start/Stop buttons always
+        // reflect reality.
+        val svcRunning = GatewayRunning.isRunning || gatewayServiceAlive()
+
         val total = permSpecs().size
         val got = permSpecs().count { granted(it.perm) }
 
@@ -798,8 +859,9 @@ class MainActivity : AppCompatActivity() {
         sb.append("\nWeb app: open the Devices tab → Create pairing code → type it here.\n")
         statusText.text = sb.toString()
 
-        codeInput.visibility = if (paired) View.GONE else View.VISIBLE
-        pairBtn.visibility = if (paired) View.GONE else View.VISIBLE
+        // 1.5.25 — whole-section visibility (replaces per-view toggles)
+        setupSection.visibility = if (paired) View.GONE else View.VISIBLE
+        pairedSection.visibility = if (paired) View.VISIBLE else View.GONE
         simInput.setText(DeviceStore.simNumber(this) ?: "")
         startBtn.isEnabled = paired && !svcRunning
         stopBtn.isEnabled = svcRunning
@@ -820,6 +882,18 @@ class MainActivity : AppCompatActivity() {
         gwCreateBtn.isEnabled = paired
         gwStatusBtn.isEnabled = paired
     }
+
+    /**
+     * 1.5.25 — ground truth for "is the gateway actually running": ask
+     * ActivityManager for this app's foreground services instead of trusting
+     * the static flag. Cheap (one binder call, on resume only) and fixes the
+     * stale "RUNNING" / dead-button state after process death.
+     */
+    private fun gatewayServiceAlive(): Boolean = try {
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        val cls = GatewayService::class.java.name
+        am?.getRunningServices(200)?.any { it.service.className == cls } ?: false
+    } catch (_: Exception) { false }
 
     private companion object {
         const val REQ_PERM = 41

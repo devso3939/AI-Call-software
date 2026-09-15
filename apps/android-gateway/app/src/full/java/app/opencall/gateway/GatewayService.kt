@@ -3,10 +3,14 @@ package app.opencall.gateway
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -24,8 +28,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  *                                  answer_call / end_call / ping)
  *   3. execute each, report via gateway_complete_command()
  *
- * Battery-friendly: 5 s idle poll, immediate wake on connectivity, Doze-safe
- * via a partial wakelock only while executing a command.
+ * Battery-friendly: 20 s idle poll (4 s while a call is active so dial/answer
+ * stays snappy), exponential backoff on errors (5 s → 60 s), immediate wake on
+ * connectivity regain via ConnectivityManager callback, and a partial wakelock
+ * only while executing commands. The foreground notification is live-updated
+ * with battery/online state and carries a Stop action.
  */
 class GatewayService : Service() {
 
@@ -55,6 +62,77 @@ class GatewayService : Service() {
     private var bridge: WebRtcBridge? = null
     private lateinit var prefs: android.content.SharedPreferences
 
+    // Live notification state (1.5.25): battery % and connectivity, refreshed
+    // by the loop; notification re-rendered when the text changes.
+    private var lastNotifText: String? = null
+    private var lastBattery: Int? = null
+    private var online = true
+
+    // Connectivity wake (1.5.25): onAvailable() triggers an immediate loop
+    // iteration instead of waiting out the current sleep.
+    private val wakeLock = Object()
+    @Volatile private var wakeNow = false
+    private var netCallback: ConnectivityManager.NetworkCallback? = null
+    private var partialWake: PowerManager.WakeLock? = null
+
+    private fun buildNotification(): Notification {
+        val batteryTxt = lastBattery?.let { " • $it%" } ?: ""
+        val statusTxt = if (online) "Online — relaying SMS & calls" else "Offline — waiting for network"
+        val stopIntent = PendingIntent.getService(
+            this, 0,
+            Intent(this, GatewayService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION") Notification.Builder(this)
+        }
+        return b
+            .setContentTitle("OpenCall gateway${batteryTxt}")
+            .setContentText(statusTxt)
+            .setSmallIcon(android.R.drawable.stat_sys_phone_call)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .addAction(0, "Stop", stopIntent)
+            .build()
+    }
+
+    private fun refreshNotification(battery: Int?, isOnline: Boolean) {
+        val changed = battery != lastBattery || isOnline != online
+        lastBattery = battery
+        online = isOnline
+        if (!changed) return
+        val text = "b=$battery on=$isOnline"
+        if (text == lastNotifText) return
+        lastNotifText = text
+        try {
+            val nm = getSystemService(NotificationManager::class.java)
+            nm?.notify(NOTIF_ID, buildNotification())
+        } catch (_: Exception) {}
+    }
+
+    /** Nudge the loop awake immediately (used by the network callback). */
+    private fun wakeLoop() {
+        synchronized(wakeLock) {
+            wakeNow = true
+            wakeLock.notifyAll()
+        }
+    }
+
+    /** Interruptible sleep that returns early when wakeLoop() fires. */
+    private fun sleep(ms: Long) {
+        val deadline = System.currentTimeMillis() + ms
+        synchronized(wakeLock) {
+            while (running.get() && !wakeNow) {
+                val remain = deadline - System.currentTimeMillis()
+                if (remain <= 0) return
+                try { wakeLock.wait(minOf(remain, 1000)) } catch (_: InterruptedException) { return }
+            }
+            wakeNow = false
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -76,27 +154,35 @@ class GatewayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("OpenCall gateway")
-                .setContentText("SIM gateway online — SMS & calls relay")
-                .setSmallIcon(android.R.drawable.stat_sys_phone_call)
-                .setOngoing(true)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-                .setContentTitle("OpenCall gateway")
-                .setContentText("SIM gateway online — SMS & calls relay")
-                .setSmallIcon(android.R.drawable.stat_sys_phone_call)
-                .setOngoing(true)
-                .build()
-        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
-            startForeground(NOTIF_ID, notification)
+            startForeground(NOTIF_ID, buildNotification())
+        }
+
+        // Connectivity wake (1.5.25): the moment the network comes back
+        // (wifi↔mobile handover, Doze exit), the loop wakes immediately
+        // instead of waiting out its current backoff sleep.
+        if (netCallback == null) {
+            try {
+                val cm = getSystemService(ConnectivityManager::class.java)
+                val cb = object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) {
+                        Log.i(TAG, "network available — waking loop")
+                        wakeLoop()
+                    }
+                }
+                cm?.registerNetworkCallback(
+                    android.net.NetworkRequest.Builder()
+                        .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        .build(),
+                    cb,
+                )
+                netCallback = cb
+            } catch (e: Exception) {
+                Log.w(TAG, "network callback registration failed: ${e.message}")
+            }
         }
 
         if (running.compareAndSet(false, true)) {
@@ -109,6 +195,15 @@ class GatewayService : Service() {
     override fun onDestroy() {
         running.set(false)
         GatewayRunning.isRunning = false
+        wakeLoop() // release any in-flight sleep so the worker exits promptly
+        try {
+            netCallback?.let {
+                getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(it)
+            }
+        } catch (_: Exception) {}
+        netCallback = null
+        try { partialWake?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
+        partialWake = null
         try { bridge?.close() } catch (_: Exception) {}
         bridge = null
         worker?.interrupt()
@@ -121,7 +216,11 @@ class GatewayService : Service() {
 
     private fun loop() {
         Log.i(TAG, "gateway loop started")
-        var iteration = 0L
+
+        // Exponential backoff (1.5.25): 5s → 15s → 30s → 60s, reset on any
+        // successful RPC round. Prevents hammering a dead network every 5 s
+        // while still recovering fast.
+        var backoffMs = 5000L
 
         while (running.get()) {
             val devId = DeviceStore.deviceId(this)
@@ -135,8 +234,9 @@ class GatewayService : Service() {
                 FullCallService.autoAnswerInbound =
                     prefs.getBoolean("agentMode", false)
 
-                // 1) heartbeat every iteration (marks online; server times out after 90 s)
                 val battery = readBattery()
+
+                // 1) heartbeat every iteration (marks online; server times out after 90 s)
                 Rpc.rpc(
                     "gateway_heartbeat",
                     JSONObject()
@@ -159,23 +259,40 @@ class GatewayService : Service() {
                         .put("p_limit", 5),
                 )
 
+                // Success → reset backoff and refresh the live notification.
+                backoffMs = 5000L
+                refreshNotification(battery, true)
+
                 val cmds = Commands.parse(claimed)
                 if (cmds.isEmpty()) {
-                    sleep(if (iteration % 6 == 0L) 5000 else 4000)
-                    iteration++
+                    // Idle: 20 s between polls saves battery; when a call is
+                    // active (or an audio bridge is up) drop to 4 s so dial /
+                    // answer / end commands stay snappy.
+                    val callActive = FullCallService.ringing || FullCallService.active || bridge != null
+                    sleep(if (callActive) 4000 else 20000)
                     continue
                 }
 
-                // 3) execute each
-                for (cmd in cmds) {
-                    if (!running.get()) break
-                    execute(devId, secret, cmd)
+                // 3) execute each under a partial wakelock so the CPU doesn't
+                // sleep mid-command (dial, SMS send, DTMF…). Acquired per
+                // command batch, released in finally.
+                val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                val wl = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "opencall:gw-cmd")
+                try {
+                    wl?.acquire(60_000) // safety cap: never hold beyond 60 s
+                    for (cmd in cmds) {
+                        if (!running.get()) break
+                        execute(devId, secret, cmd)
+                    }
+                } finally {
+                    try { wl?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "loop error: ${e.message}")
-                sleep(5000)
+                refreshNotification(null, false)
+                sleep(backoffMs)
+                backoffMs = (backoffMs * 3).coerceAtMost(60_000L) // 5 → 15 → 45 → 60 cap
             }
-            iteration++
         }
         Log.i(TAG, "gateway loop stopped")
     }

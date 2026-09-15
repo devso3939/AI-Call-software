@@ -7,6 +7,7 @@ import android.telephony.SmsManager
 import android.util.Log
 import org.json.JSONObject
 import java.util.UUID
+import java.util.concurrent.Executors
 
 /**
  * Sends an SMS through the SIM using SmsManager, then reports the result back
@@ -18,6 +19,15 @@ import java.util.UUID
  */
 object SmsSender {
     private const val TAG = "OpenCall/Sms"
+
+    // 1.5.25 — delivery reports are network RPCs; they used to run inline on
+    // whatever thread called report() — including the MAIN thread from
+    // SmsStatusReceiver.onReceive (ANR risk: broadcast receivers must return
+    // in ~10 s and mobile data can easily exceed that). All reports now go
+    // through this single background executor.
+    private val reportExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "oc-sms-report").apply { isDaemon = true }
+    }
 
     fun send(ctx: Context, smsId: String, to: String, body: String) {
         try {
@@ -56,22 +66,27 @@ object SmsSender {
     }
 
     fun report(ctx: Context, smsId: String, ok: Boolean, error: String? = null, providerRef: String? = null) {
-        try {
-            val devId = DeviceStore.deviceId(ctx) ?: return
-            val secret = DeviceStore.secret(ctx) ?: return
-            Rpc.rpc(
-                "gateway_report_sms",
-                JSONObject()
-                    .put("p_device_id", devId)
-                    .put("p_secret", secret)
-                    .put("p_sms_id", smsId)
-                    .put("p_status", if (ok) "sent" else "failed")
-                    .putOpt("p_error", error?.take(200))
-                    .putOpt("p_provider_ref", providerRef),
-            )
-            Log.i(TAG, "report sms smsId=$smsId ok=$ok err=$error")
-        } catch (e: Exception) {
-            Log.e(TAG, "report sms failed (will stay 'queued' server-side)", e)
+        // Always off the calling thread — callers include the main thread
+        // (SmsStatusReceiver) and the gateway worker.
+        val appCtx = ctx.applicationContext
+        reportExecutor.execute {
+            try {
+                val devId = DeviceStore.deviceId(appCtx) ?: return@execute
+                val secret = DeviceStore.secret(appCtx) ?: return@execute
+                Rpc.rpc(
+                    "gateway_report_sms",
+                    JSONObject()
+                        .put("p_device_id", devId)
+                        .put("p_secret", secret)
+                        .put("p_sms_id", smsId)
+                        .put("p_status", if (ok) "sent" else "failed")
+                        .putOpt("p_error", error?.take(200))
+                        .putOpt("p_provider_ref", providerRef),
+                )
+                Log.i(TAG, "report sms smsId=$smsId ok=$ok err=$error")
+            } catch (e: Exception) {
+                Log.e(TAG, "report sms failed (will stay 'queued' server-side)", e)
+            }
         }
     }
 }

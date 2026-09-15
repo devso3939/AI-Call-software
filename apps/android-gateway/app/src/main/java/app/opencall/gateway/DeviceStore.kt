@@ -14,15 +14,28 @@ import androidx.security.crypto.MasterKey
 object DeviceStore {
     private const val FILE = "opencall_gateway_secure"
 
+    // Cache the EncryptedSharedPreferences instance: creating it on every access
+    // re-derives the master key and is expensive (it was being done 2+ times per
+    // poll iteration). One instance per process is safe — AndroidX encryption
+    // handles concurrent access internally.
+    @Volatile
+    private var cachedPrefs: SharedPreferences? = null
+
     private fun prefs(ctx: Context): SharedPreferences {
-        val masterKey = MasterKey.Builder(ctx)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        return EncryptedSharedPreferences.create(
-            ctx, FILE, masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
+        cachedPrefs?.let { return it }
+        synchronized(this) {
+            cachedPrefs?.let { return it }
+            val masterKey = MasterKey.Builder(ctx.applicationContext)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            val p = EncryptedSharedPreferences.create(
+                ctx.applicationContext, FILE, masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+            )
+            cachedPrefs = p
+            return p
+        }
     }
 
     fun deviceId(ctx: Context): String? = prefs(ctx).getString("deviceId", null)

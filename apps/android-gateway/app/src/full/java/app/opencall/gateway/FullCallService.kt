@@ -384,6 +384,16 @@ class FullCallService : InCallService() {
      * every control lives in the web app.
      */
     private fun minimizeCallScreen() {
+        // 1.5.25 — when the CallMask overlay is showing it fully covers the
+        // stock dialer; pressing Home 100× per call is wasted work (battery +
+        // logcat spam) and can fight the user's own Home presses. Skip the
+        // suppression loop entirely in that case — the overlay is the
+        // primary defense; the loop remains the fallback for phones without
+        // the overlay grant.
+        if (CallMask.isShowing()) {
+            dismissInCallUi(this)
+            return
+        }
         dismissInCallUi(this)
         suppressLoop()
     }

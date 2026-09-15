@@ -93,12 +93,18 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.23 · versionCode 30). Two APKs:
+            build (v1.5.25 · versionCode 31). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.25 highlights — easier to use, lighter on battery
+            - Web: button pending states ("Sending…", "Dialing…") prevent double-taps; spinners instead of false empty lists; errors at top of screen; styled confirm dialogs; gateway password hidden behind Show/Hide; background tabs stop polling entirely
+            - Android: first-launch permission explainer; Setup section (pair) separated from the paired screen; live gateway notification (battery + online) with a Stop action
+            - Android: idle poll 20 s (was 4–5 s), exponential backoff offline, instant wake on network return, partial wakelock only while executing commands — big battery savings
+            - Android: SMS delivery reports moved off the main thread (ANR fix); Home-press suppression loop skipped when the call overlay is showing
 
             ### v1.5.23 highlights — credentials always visible
             - "Show my credentials" now shows the real password straight from the server (encrypted server-side, migration 022)

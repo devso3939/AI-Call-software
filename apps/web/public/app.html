@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenCall AI — Live Web App</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.18.4/dist/twilio.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
+<!-- PERF FIX (1.5.25): the three SDK scripts used to sit here in <head> and
+     blocked first paint for their full download. They are loaded at the END
+     of <body> now (right before the app script, which needs them at parse
+     time) — the page shell paints immediately, SDKs download in parallel. -->
 <style>
   :root{
     --ink950:#070b14;--ink900:rgba(17,24,39,.72);--ink800:#141b29;--ink700:rgba(148,163,184,.14);--ink600:rgba(148,163,184,.22);
@@ -257,6 +258,10 @@
     justify-content:center;background:rgba(148,163,184,.07);border:1px solid var(--ink700);box-shadow:0 8px 24px rgba(0,0,0,.25)}
   .empty .etitle{font-size:.92rem;font-weight:650;color:#cbd5e1;margin-bottom:3px}
   .empty .ehint{font-size:.78rem;color:#64748b;max-width:340px;line-height:1.5}
+  /* UX FIX (1.5.25): small spinner used by loadingState() for first fetches */
+  .spinner{width:26px;height:26px;border-radius:50%;border:3px solid rgba(148,163,184,.18);border-top-color:var(--mint400);
+    animation:spin .8s linear infinite;margin-bottom:12px}
+  @keyframes spin{to{transform:rotate(360deg)}}
   /* tab content gets a gentle slide-in so switching feels alive, not flickery */
   .main>div{animation:viewin .26s cubic-bezier(.2,.8,.3,1)}
   @keyframes viewin{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
@@ -313,9 +318,13 @@
   @supports not (height:100dvh){body{min-height:100vh}}
 </style>
 <link rel="manifest" href="manifest.webmanifest">
+<!-- PERF FIX (1.5.25): font CSS no longer render-blocking — it loads async and
+     applies when ready (system font shows for a split second at worst). -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#070b14">
@@ -333,6 +342,11 @@
 <button id="sw-update" class="btn btn-ghost" style="display:none;position:fixed;bottom:18px;left:18px;z-index:120;
   border-radius:14px;padding:11px 16px;font-weight:700;background:rgba(20,27,41,.92);border-color:var(--ink600);
   box-shadow:0 10px 34px rgba(0,0,0,.5);backdrop-filter:blur(10px)">⟳ Update available — reload</button>
+
+<!-- PERF FIX (1.5.25): SDKs moved here from <head> — see comment up top -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.18.4/dist/twilio.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
 
 <script>
 /* ============================================================
@@ -746,6 +760,7 @@ let smsBody = '';
 let pairingCode = null;          // 6-digit code waiting to be typed into the app
 let pairingAt = 0;
 let pairingKnownIds = null;      // AUDIT FIX: device ids known when the code was issued
+let pairingPollTimer = null;     // UX FIX 1.5.25: 3 s poll while a pairing code is active
 let forceTwilio = false;         // route override when both gateway + Twilio are up
 
 /* OpenCall Connect: API keys for external apps/services */
@@ -767,7 +782,19 @@ let gwDeviceSel = '';            // setup form: bound device id
 let gwAnyDevice = false;         // setup form: allow fallback to any online device
 let freshGwPassword = null;      // plaintext password shown exactly once after setup
 
+/* UX FIX (1.5.25): "first load" flags — the old UI rendered the final empty
+   state ("No calls yet" / "No contacts yet") while the very first fetch was
+   still in flight, which looked like the user's data had vanished. Tabs now
+   show a small spinner until the first fetch completes. */
+let historyLoaded = false;
+let contactsLoaded = false;
+let smsLoaded = false;
+let devicesLoaded = false;
+
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* UX FIX (1.5.25): honest loading state for first fetches — replaces the old
+   "false empty state" flash that made it look like data had vanished. */
+const loadingState = (msg) => `<div class="empty"><div class="spinner" aria-hidden="true"></div><div class="etitle">${esc(msg)}</div></div>`;
 /* esc() is for HTML content — NOT safe inside inline JS strings: it turns '
    into &#39; which the HTML parser decodes back to ' and breaks the literal.
    jsArg() escapes for the JS-string-inside-an-attribute context. */
@@ -828,12 +855,28 @@ async function enterApp(p) {
   await Promise.all([refreshHistory(), refreshContacts()]);
   wireRealtime();
   sweep();
+  // PERF FIX (1.5.25): all background intervals are gated on tab visibility —
+  // a hidden browser tab used to keep polling every second/30 s forever,
+  // burning battery and doubling server load whenever the user had the app
+  // open in a background tab. visibilitychange pauses everything; coming
+  // back runs one immediate sweep + history refresh so the data is fresh.
   setInterval(sweep, 30000);
   // per-second UI tick — updates ONLY the seconds/elapsed text nodes and the
   // pairing-code countdown. It must NEVER re-render the whole app: a full
   // renderApp() here used to destroy the DOM (and with it your focus and
   // everything you had typed) once a second while a call was live.
   setInterval(uiTick, 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopEventPoll();
+    } else {
+      sweep();
+      if (call.phase === 'idle' && !incoming) refreshHistory();
+      if (me && tab === 'gateway') refreshSmsGw();
+      if (me) refreshDevices();
+      if (call.phase !== 'idle' && !pollTimer) startEventPoll();   // resume the call event stream
+    }
+  });
   startBootPoll();
   document.addEventListener('click', () => {
     remoteAudio.play().then(() => {}, () => {});
@@ -852,6 +895,10 @@ async function enterApp(p) {
    second on the Devices tab — that destroyed focus (and any typing) and froze
    the call-popup timer because the popup had no matching class hooks. */
 function uiTick() {
+  // PERF FIX (1.5.25): hidden tabs skip the tick entirely (the interval still
+  // fires, but does nothing — timers are throttled to ≥1/min by the browser
+  // anyway; this just avoids wasted querySelectorAll work).
+  if (document.hidden) return;
   if (call.startedAt) {
     const s = Math.floor((Date.now() - call.startedAt) / 1000);
     document.querySelectorAll('[data-timer]').forEach(el => {
@@ -1001,6 +1048,7 @@ function handleTwilioIncoming(c) {
    for its own echo. */
 async function refreshDevices() {
   const { data, error } = await sb.rpc('list_gateway_devices');
+  devicesLoaded = true;
   if (!error && data) {
     const next = data;
     // BLINK FIX (v1.5.11): the Android heartbeats every few seconds → a gateway_devices
@@ -1042,7 +1090,11 @@ async function refreshDevices() {
     if (gatewayOnline && pairingCode) {
       const known = pairingKnownIds || new Set();
       const fresh = next.find(d => !known.has(d.id));
-      if (fresh) { pairingCode = null; pairingKnownIds = null; showToast('Android device paired ✓'); renderApp(); return; }
+      if (fresh) {
+        pairingCode = null; pairingKnownIds = null;
+        if (pairingPollTimer) { clearInterval(pairingPollTimer); pairingPollTimer = null; }
+        showToast('Android device paired ✓'); renderApp(); return;
+      }
     }
     if (!visEq(nextVis, prevVis) || gwChanged) renderApp();   // re-render only on real change
   }
@@ -1050,21 +1102,26 @@ async function refreshDevices() {
 
 async function refreshSms() {
   const { data } = await sb.from('sms_messages').select('*').order('created_at', { ascending: false }).limit(50);
+  smsLoaded = true;
   const next = data || [];
   if (snap(next) !== snap(smsList)) { smsList = next; if (me) renderApp(); }   // re-render only on real change
 }
 
-async function sendSms() {
+/* UX FIX (1.5.25): event-object overloads so the button shows a pending state
+   and cannot be double-tapped while the RPC is in flight. */
+async function sendSms(e) {
   const to = (smsTo || '').trim(), body = (smsBody || '').trim();
   setError('');
   if (!to || !body) return setError('Enter a number (+country…) and a message.');
-  const { error } = await sb.rpc('send_sms', { p_to: to, p_body: body });
-  if (error) return setError(honestError(error));
-  smsBody = '';
-  showToast(gatewayFlavor === 'bridge'
-    ? 'SMS sent to your phone — tap the notification to send it from your number'
-    : 'SMS queued — your phone sends it from your number');
-  refreshSms();
+  await busy(e && e.currentTarget, async () => {
+    const { error } = await sb.rpc('send_sms', { p_to: to, p_body: body });
+    if (error) return setError(honestError(error));
+    smsBody = '';
+    showToast(gatewayFlavor === 'bridge'
+      ? 'SMS sent to your phone — tap the notification to send it from your number'
+      : 'SMS queued — your phone sends it from your number');
+    refreshSms();
+  }, 'Sending');
 }
 
 async function startPairing() {
@@ -1076,10 +1133,19 @@ async function startPairing() {
   // clears the code when a genuinely NEW device appears.
   pairingKnownIds = new Set(gatewayDevices.map(d => d.id));
   renderApp();
+  // UX FIX (1.5.25): while a pairing code is active, poll every 3 s so the
+  // "paired ✓" moment appears within seconds of the phone joining — the old
+  // UI only noticed on the next devices refresh, which felt broken.
+  clearInterval(pairingPollTimer);
+  pairingPollTimer = setInterval(() => {
+    if (!pairingCode || document.hidden) return;   // expired/cleared → skip
+    if (Date.now() - pairingAt > 15 * 60000) { clearInterval(pairingPollTimer); pairingPollTimer = null; return; }
+    refreshDevices();
+  }, 3000);
 }
 
 async function unpairDevice(id) {
-  if (!confirm('Unpair this phone? It will stop sending SMS and calls until paired again.')) return;
+  if (!(await appConfirm('Unpair this phone? It will stop sending SMS and calls until paired again.', 'Unpair'))) return;
   await sb.rpc('remove_gateway_device', { p_device_id: id }).then(() => {}, () => {});
   showToast('Device unpaired');
   await refreshDevices();
@@ -1107,7 +1173,7 @@ async function createApiKey() {
 }
 
 async function revokeApiKey(id) {
-  if (!confirm('Revoke this API key? Every app using it will immediately lose access.')) return;
+  if (!(await appConfirm('Revoke this API key? Every app using it will immediately lose access.', 'Revoke key'))) return;
   const { error } = await sb.rpc('revoke_api_key', { p_id: id });
   if (error) return setError(honestError(error));
   showToast('Key revoked');
@@ -1133,8 +1199,10 @@ async function refreshSmsGw() {
 
 /* UX FIX (1.5.21): while the SMS Gateway tab is open, poll every 15 s so the
    online/battery status flips to live as soon as the phone starts heartbeating
-   — the user should not have to reload the page. */
-setInterval(() => { if (me && tab === 'gateway') { refreshSmsGw(); } }, 15000);
+   — the user should not have to reload the page.
+   PERF FIX (1.5.25): hidden tab → skip the poll (visibilitychange refreshes
+   once when the user comes back). */
+setInterval(() => { if (!document.hidden && me && tab === 'gateway') { refreshSmsGw(); } }, 15000);
 
 async function refreshGwLog() {
   const { data, error } = await sb.rpc('get_gateway_api_log', { p_limit: 50 });
@@ -1142,7 +1210,7 @@ async function refreshGwLog() {
   if (me) renderApp();
 }
 
-async function setupSmsGw() {
+async function setupSmsGw(e) {
   setError('');
   // UX FIX (1.5.21): preselect the bound (or only) device automatically —
   // the user should not have to "pick a phone" just to enable the gateway.
@@ -1164,19 +1232,21 @@ async function setupSmsGw() {
     return setError('Username: 3–40 chars — lowercase letters, digits, dot, dash, underscore.');
   if (gwPassword && gwPassword.length < 8)
     return setError('Password must be at least 8 characters (or leave empty to auto-generate a strong one).');
-  const { data, error } = await sb.rpc('setup_sms_gateway', {
-    p_device_id: devId, p_username: uname, p_password: gwPassword || null, p_any_device: gwAnyDevice,
-  });
-  if (error) return setError(honestError(error));
-  freshGwPassword = data;                   // plaintext password shown exactly once
-  gwPassword = '';
-  showToast('SMS Gateway enabled — copy the password now, it is shown only once');
-  await refreshSmsGw();
-  await refreshGwLog();
+  await busy(e && e.currentTarget, async () => {
+    const { data, error } = await sb.rpc('setup_sms_gateway', {
+      p_device_id: devId, p_username: uname, p_password: gwPassword || null, p_any_device: gwAnyDevice,
+    });
+    if (error) return setError(honestError(error));
+    freshGwPassword = data;                   // plaintext password shown exactly once
+    gwPassword = '';
+    showToast('SMS Gateway enabled — copy the password now, it is shown only once');
+    await refreshSmsGw();
+    await refreshGwLog();
+  }, 'Saving');
 }
 
 async function disableSmsGw() {
-  if (!confirm('Disable the SMS Gateway? Every third-party service using these credentials will immediately lose access.')) return;
+  if (!(await appConfirm('Disable the SMS Gateway? Every third-party service using these credentials will immediately lose access.', 'Disable gateway'))) return;
   const { error } = await sb.rpc('disable_sms_gateway');
   if (error) return setError(honestError(error));
   freshGwPassword = null;
@@ -1219,6 +1289,24 @@ function copyText(txt, msg) {
   if (navigator.clipboard && window.isSecureContext) {
     navigator.clipboard.writeText(txt).then(done, () => fallbackCopy(txt, done));
   } else fallbackCopy(txt, done);
+}
+/* SECURITY/UX FIX (1.5.25): the saved gateway password used to be rendered
+   INTO the DOM as plain text and embedded in an inline onclick — anything
+   that can read the page (a stray browser extension, a screen-share, a
+   shoulder-surf) could grab it. It now stays in JS memory only: masked in
+   the DOM, revealed/copied on explicit tap. */
+function copyGwPass() {
+  if (smsGw && smsGw.password) { copyText(smsGw.password, 'Password copied'); return; }
+  if (freshGwPassword && freshGwPassword.password) { copyText(freshGwPassword.password, 'Password copied'); }
+}
+function toggleGwPass() {
+  const el = document.getElementById('gw-pass-val');
+  const btn = document.getElementById('gw-pass-toggle');
+  if (!el || !btn) return;
+  const shown = el.dataset.shown === '1';
+  el.textContent = shown ? '••••••••••••' : (smsGw && smsGw.password ? smsGw.password : '');
+  el.dataset.shown = shown ? '' : '1';
+  btn.textContent = shown ? '👁 Show' : '🙈 Hide';
 }
 function fallbackCopy(txt, done) {
   const ta = document.createElement('textarea');
@@ -1909,6 +1997,7 @@ async function refreshHistory() {
     .or(`created_by.eq.${me.id},callee_id.eq.${me.id}`)
     .order('created_at', { ascending: false })
     .limit(30);
+  historyLoaded = true;
   const next = data || [];
   if (snap(next) !== snap(history)) { history = next; renderApp(); }   // re-render only on real change
 }
@@ -1948,11 +2037,15 @@ async function downloadRecording(callId, path) {
 
 async function refreshContacts() {
   const { data } = await sb.from('profiles').select('*').neq('id', me.id).order('display_name');
+  contactsLoaded = true;
   const next = data || [];
   if (snap(next) !== snap(contacts)) { contacts = next; renderApp(); }   // re-render only on real change
 }
 
 async function sweep() {
+  // PERF FIX (1.5.25): hidden tab → skip (the visibilitychange handler runs
+  // one sweep the moment the tab becomes visible again).
+  if (document.hidden) return;
   await sb.rpc('sweep_no_answer', { p_older_than_seconds: RING_TIMEOUT_S }).then(() => {}, () => {});
   if (call.phase === 'idle' && !incoming) refreshHistory();
 }
@@ -2005,16 +2098,16 @@ function renderLogin() {
     </div>
   </div>`;
   document.getElementById('f-mode').onclick = (e) => { e.preventDefault(); loginMode = loginMode === 'login' ? 'register' : 'login'; renderLogin(); };
-  document.getElementById('f-go').onclick = async () => {
+  document.getElementById('f-go').onclick = (e) => busy(e.currentTarget, async () => {
     const email = document.getElementById('f-email').value.trim();
     const pass = document.getElementById('f-pass').value;
     const name = document.getElementById('f-name')?.value.trim();
     document.getElementById('login-err').innerHTML = '';
     const err = loginMode === 'login' ? await doLogin(email, pass) : await doRegister(email, pass, name || email.split('@')[0]);
     if (err) document.getElementById('login-err').innerHTML = `<div class="err">${esc(err)}</div>`;
-  };
-  document.getElementById('f-demo-a').onclick = () => doLogin('alice@opencall.app', 'opencall123');
-  document.getElementById('f-demo-b').onclick = () => doLogin('bob@opencall.app', 'opencall123');
+  }, 'Signing in');
+  document.getElementById('f-demo-a').onclick = (e) => busy(e.currentTarget, () => doLogin('alice@opencall.app', 'opencall123'), 'Signing in');
+  document.getElementById('f-demo-b').onclick = (e) => busy(e.currentTarget, () => doLogin('bob@opencall.app', 'opencall123'), 'Signing in');
 }
 
 /* ---------------- UI: app shell (professional dashboard) ---------------- */
@@ -2085,6 +2178,12 @@ function renderApp() {
         </div>
       </aside>
       <main class="main">
+        <!-- UX FIX (1.5.25): the error box used to sit at the BOTTOM of <main>
+             — invisible on long tabs and wiped by every re-render. It now sits
+             right under the page title (always visible, survives nothing by
+             being re-rendered since renderApp recreates it) and is aria-live
+             so screen readers announce errors. -->
+        <div id="app-err" style="margin:0 0 12px" aria-live="polite"></div>
         <div class="pagetitle">
           <div class="row" style="gap:10px">
             <button class="menutoggle" onclick="toggleSide()">☰</button>
@@ -2108,11 +2207,10 @@ function renderApp() {
           </div>
         </div>` : ''}
         ${body}
-        <div id="app-err" style="margin-top:12px"></div>
       </main>
     </div>
     ${callBanner()}
-    <div id="toast-stack" style="position:fixed;top:0;left:0;right:0;z-index:200;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:8px"></div>
+    <div id="toast-stack" style="position:fixed;top:0;left:0;right:0;z-index:200;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:8px" aria-live="polite"></div>
   `;
   wireDialKeys();
   // FOCUS RESTORE — put the pointer back exactly where it was
@@ -2153,7 +2251,7 @@ function tabDialer() {
         <button class="btn btn-ghost tiny" onclick="dialEdit('')" ${dial ? '' : 'disabled'}>Clear</button>
       </div>
       <button id="btnCall" class="callbtn" ${canCall(dial) ? '' : 'disabled'}
-        onclick="onCallClick()" title="Call ${esc(dial || '')}" aria-label="Start call">📞</button>
+        onclick="onCallClick(event)" title="Call ${esc(dial || '')}" aria-label="Start call">📞</button>
       <div class="tiny" style="margin-top:8px">Tap the green button or press Enter to call</div>
     </div>
     <div class="card">
@@ -2216,14 +2314,17 @@ function dialEdit(v) {
   dels.forEach(b => { if (b.textContent.includes('⌫') || b.textContent.includes('Clear')) b.disabled = !dial.length; });
 }
 
-function onCallClick() {
+/* UX FIX (1.5.25): the call button shows "Dialing…" and is disabled while the
+   RPC + route setup run — no more double-tap double-dial. */
+function onCallClick(e) {
+  const btn = e && e.currentTarget;
   const d = (dial || '').trim();
   if (/^\+?\d[\d\s()-]{5,}$/.test(d)) {
-    if (gatewayOnline && !forceTwilio) return placeGatewayCall(d);   // free first
-    if (pstnConfigured) return placePstnCall(d);                     // paid fallback
+    if (gatewayOnline && !forceTwilio) return busy(btn, () => placeGatewayCall(d), 'Dialing');
+    if (pstnConfigured) return busy(btn, () => placePstnCall(d), 'Dialing');
     return setError('No phone route: pair your Android in Devices, or configure Twilio.');
   }
-  placeCall(d);
+  busy(btn, () => placeCall(d), 'Dialing');
 }
 
 /* ---------------- SMS tab ---------------- */
@@ -2260,11 +2361,12 @@ function tabSms() {
       <label class="label">Message</label>
       <textarea class="input" id="sms-body" rows="4" placeholder="Type your message… (Enter to send, Shift+Enter for a new line)" oninput="smsBody=this.value;smsCount()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendSms()}" ${ready ? '' : 'disabled'}>${esc(smsBody)}</textarea>
       <div class="charcount" id="charcount">${len}/1600</div>
-      <button class="btn btn-primary" style="width:100%;margin-top:10px" ${ready ? '' : 'disabled'} onclick="sendSms()">Send SMS →</button>
+      <button class="btn btn-primary" style="width:100%;margin-top:10px" ${ready ? '' : 'disabled'} onclick="sendSms(event)">Send SMS →</button>
     </div>
     <div class="card">
       <div class="row between"><h2>Inbox</h2><button class="btn btn-ghost tiny" onclick="refreshSms()">↻ Refresh</button></div>
-      ${smsList.length === 0 ? '<div class="empty"><div class="eico">💬</div><div class="etitle">No messages yet</div><div class="ehint">Send your first SMS — it goes out from your own SIM number via your paired Android.</div></div>' : smsList.map(m => `
+      ${!smsLoaded ? loadingState('Loading messages…') :
+        smsList.length === 0 ? '<div class="empty"><div class="eico">💬</div><div class="etitle">No messages yet</div><div class="ehint">Send your first SMS — it goes out from your own SIM number via your paired Android.</div></div>' : smsList.map(m => `
       <div class="contact">
         <div style="min-width:0">
           <strong>${m.direction === 'inbound' ? '← ' : '→ '}<a href="#" onclick="event.preventDefault();smsTo='${jsArg(m.direction === 'inbound' ? (m.from_number || '') : (m.to_number || ''))}';renderApp();setTimeout(()=>document.getElementById('sms-to')&&document.getElementById('sms-to').focus(),0)" style="text-decoration:none">${esc(m.direction === 'inbound' ? (m.from_number || '?') : (m.to_number || '?'))}</a></strong>
@@ -2289,7 +2391,8 @@ function tabDevices() {
   <div class="card">
     <h2>Your devices</h2>
     <p class="muted">Pair your Android phone once — it becomes your free gateway for real SMS and real cellular calls on your own number, worldwide.</p>
-    ${gatewayDevices.length === 0 ? '<div class="empty"><div class="eico">🤖</div><div class="etitle">No devices paired yet</div><div class="ehint">Install the OpenCall Android app, enter the pairing code shown when you tap “Pair a device”, and your phone becomes your free calling gateway.</div></div>' : gatewayDevices.map(d => {
+    ${!devicesLoaded ? loadingState('Checking for paired devices…') :
+      gatewayDevices.length === 0 ? '<div class="empty"><div class="eico">🤖</div><div class="etitle">No devices paired yet</div><div class="ehint">Install the OpenCall Android app, enter the pairing code shown when you tap “Pair a device”, and your phone becomes your free calling gateway.</div></div>' : gatewayDevices.map(d => {
       const fl = ((d.app_version || '').includes('-lite')) ? 'bridge' : ((d.app_version || '').includes('-full')) ? 'gateway' : null;
       const flBadge = fl === 'bridge'
         ? '<span class="pill queued">Bridge · tap-to-dial / tap-to-send</span>'
@@ -2349,6 +2452,7 @@ function tabDevices() {
       </div>
       <div class="tiny" style="margin-top:6px">Open the OpenCall Gateway app on your Android → type this code → Pair. Valid 15 minutes, single use.
      Expires in <span data-pairmins>${Math.max(0, Math.ceil((15 * 60000 - (Date.now() - pairingAt)) / 60000))}</span> min.</div>
+      <button class="btn btn-ghost tiny" style="margin-top:8px" onclick="refreshDevices()" aria-label="Check now whether the phone has paired">↻ Check now</button>
     </div>` : ''}
   </div>`;
 }
@@ -2500,14 +2604,17 @@ function tabSmsGateway() {
       <input type="checkbox" ${gwAnyDevice ? 'checked' : ''} onchange="gwAnyDevice=this.checked">
       <span class="tiny">Allow fallback to any other online device if the chosen phone is offline</span>
     </label>
-    <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="setupSmsGw()">⚡ Enable SMS Gateway</button>
+    <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="setupSmsGw(event)">⚡ Enable SMS Gateway</button>
     <div id="app-err"></div>
     `}
     ` : `
     <div class="keygrid" style="margin-top:12px">
       <div><div class="tiny muted">Username</div><strong style="font-family:monospace">${esc(smsGw.username)}</strong></div>
-      <div><div class="tiny muted">Password</div>${smsGw.password ? `<strong class="mint" style="font-family:monospace">${esc(smsGw.password)}</strong>
-        <div class="row" style="margin-top:4px"><button class="btn btn-ghost" style="padding:2px 10px" onclick="copyText('${jsArg(smsGw.password)}','Password copied')">Copy password</button></div>` : '<strong class="mint">•••••••••••• <span class="tiny muted">(re-save below once to make it visible)</span></strong>'}</div>
+      <div><div class="tiny muted">Password</div>${smsGw.password ? `<strong class="mint" style="font-family:monospace" id="gw-pass-val">••••••••••••</strong>
+        <div class="row" style="margin-top:4px">
+          <button class="btn btn-ghost" style="padding:2px 10px" id="gw-pass-toggle" onclick="toggleGwPass()" aria-label="Show or hide the gateway password">👁 Show</button>
+          <button class="btn btn-ghost" style="padding:2px 10px" id="gw-pass-copy" onclick="copyGwPass()" aria-label="Copy the gateway password">Copy password</button>
+        </div>` : '<strong class="mint">•••••••••••• <span class="tiny muted">(re-save below once to make it visible)</span></strong>'}</div>
       <div><div class="tiny muted">Sending phone</div><strong>${esc(boundName || '—')} ${boundOnline ? '<span class="pill sent">online</span>' : '<span class="pill failed">offline</span>'}</strong>
         <div class="tiny muted">${boundOnline
           ? (boundBattery ? `battery ${esc(boundBattery)}` : 'live') + (boundSeen ? ` · heartbeat ${esc(boundSeen)}` : '')
@@ -2558,7 +2665,7 @@ function tabSmsGateway() {
         <input type="checkbox" ${gwAnyDevice ? 'checked' : ''} onchange="gwAnyDevice=this.checked">
         <span class="tiny">Allow fallback to any other online device</span>
       </label>
-      <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="setupSmsGw()">💾 Save new credentials</button>
+      <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="setupSmsGw(event)">💾 Save new credentials</button>
       <div id="app-err"></div>
     </div>`}
   </div>
@@ -2602,7 +2709,8 @@ function tabContacts() {
   return `
   <div class="card">
     <h2>Contacts</h2>
-    ${contacts.length === 0 ? '<div class="empty"><div class="eico">👥</div><div class="etitle">No contacts yet</div><div class="ehint">Register a second OpenCall account and it will show up here for free internet calls.</div></div>' :
+    ${!contactsLoaded ? loadingState('Loading contacts…') :
+      contacts.length === 0 ? '<div class="empty"><div class="eico">👥</div><div class="etitle">No contacts yet</div><div class="ehint">Register a second OpenCall account and it will show up here for free internet calls.</div></div>' :
       contacts.map(c => `
       <div class="contact">
         <div>
@@ -2619,7 +2727,8 @@ function tabHistory() {
   <div class="card">
     <div class="row between"><h2>History</h2><button class="btn btn-ghost tiny" onclick="refreshHistory()">↻ Refresh</button></div>
     <p class="tiny" style="margin:0 0 10px">Calls you make from the web app are recorded (both voices) and appear here as playable MP3s.</p>
-    ${history.length === 0 ? '<div class="empty"><div class="eico">🕘</div><div class="etitle">No calls yet</div><div class="ehint">Calls you make from the web app are recorded (both voices) and appear here as playable MP3s.</div></div>' : `
+    ${!historyLoaded ? loadingState('Loading your calls…') :
+      history.length === 0 ? '<div class="empty"><div class="eico">🕘</div><div class="etitle">No calls yet</div><div class="ehint">Calls you make from the web app are recorded (both voices) and appear here as playable MP3s.</div></div>' : `
     <div class="tablewrap"><table><thead><tr><th>With</th><th>Route</th><th>Status</th><th>Duration</th><th>Recording</th></tr></thead><tbody>
     ${history.map(h => {
       const other = h.caller_kind === 'pstn'
@@ -2835,7 +2944,7 @@ function callBanner() {
       <div class="calltimerline" data-timer="dur">${fmtDur(dur)}</div>
       <div class="callmeta">${esc(call.routeNote)}</div>
       <div class="callbtnsrow">
-        <button class="btn btn-primary" onclick="joinBridge()">Open audio bridge</button>
+        <button class="btn btn-primary" onclick="busy(event.currentTarget,()=>joinBridge(),'Opening')">Open audio bridge</button>
         <button class="callendbtn" style="max-width:150px;margin:0" onclick="hangup()">✕ End</button>
       </div>`);
   }
@@ -2847,8 +2956,8 @@ function callBanner() {
       <div class="calltimerline"><span class="muted pulse">◉ ringing</span></div>
       <div class="callhint">answer here or on your phone</div>
       <div class="callbtnsrow">
-        <button class="btn btn-primary" onclick="answerWithBridge()">Accept + bridge</button>
-        <button class="btn btn-ghost" onclick="answerOnPhone()">On phone</button>
+        <button class="btn btn-primary" onclick="busy(event.currentTarget,()=>answerWithBridge(),'Answering')">Accept + bridge</button>
+        <button class="btn btn-primary" onclick="busy(event.currentTarget,()=>answerOnPhone(),'Answering')">On phone</button>
         <button class="btn btn-danger" onclick="declineGateway()">Reject</button>
       </div>`);
   }
@@ -2859,14 +2968,34 @@ function callBanner() {
       <div class="callmeta">Incoming · FREE ON-NET internet call</div>
       <div class="calltimerline"><span class="muted pulse">◉ ringing</span></div>
       <div class="callbtnsrow">
-        <button class="btn btn-primary" onclick="acceptIncoming()">Accept</button>
-        <button class="btn btn-danger" onclick="rejectIncoming()">Reject</button>
+        <button class="btn btn-primary" onclick="busy(event.currentTarget,()=>acceptIncoming(),'Answering')">Accept</button>
+        <button class="btn btn-danger" onclick="busy(event.currentTarget,()=>rejectIncoming(),'…')">Reject</button>
       </div>`);
   }
   return '';
 }
 
 function setError(msg) { const el = document.getElementById('app-err'); if (el) el.innerHTML = msg ? `<div class="err">${esc(msg)}</div>` : ''; }
+/* UX FIX (1.5.25): button pending state. Wraps an async action so its button
+   is disabled + shows "…" while the RPC is in flight — the old UI gave zero
+   feedback and let users double-tap (double-dial, double-SMS). The button
+   restores automatically on success OR failure, and renderApp() replacing the
+   DOM mid-flight is safe: the closure holds the OLD node, the new DOM is
+   never left stuck because every path re-enables via finally. */
+async function busy(btn, fn, pendingText) {
+  if (!btn || btn.dataset.busy) return;
+  btn.dataset.busy = '1';
+  const old = btn.innerHTML;
+  btn.disabled = true;
+  if (pendingText) btn.innerHTML = esc(pendingText) + '…';
+  try { return await fn(); }
+  finally {
+    delete btn.dataset.busy;
+    // the node may have been replaced by a re-render — only touch it if it is
+    // still in the document
+    if (btn.isConnected) { btn.disabled = false; btn.innerHTML = old; }
+  }
+}
 function honestError(err) {
   const m = (err && (err.message || String(err))) || 'unknown error';
   return m.length > 220 ? m.slice(0, 220) + '…' : m;
@@ -2881,6 +3010,7 @@ function showToast(msg) {
     stack = document.createElement('div');
     stack.id = 'toast-stack';
     stack.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:200;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:14px';
+    stack.setAttribute('aria-live', 'polite');
     document.body.appendChild(stack);
   }
   const t = document.createElement('div');
@@ -2895,6 +3025,39 @@ function showToast(msg) {
     t.style.transform = 'translateY(-10px)';
     setTimeout(() => t.remove(), 320);
   }, 3500);
+}
+/* UX FIX (1.5.25): styled in-app confirm replaces the jarring native dialog.
+   Returns a Promise<boolean>; Enter confirms, Escape cancels, backdrop click
+   cancels. Focus lands on the confirm button. */
+function appConfirm(msg, okLabel = 'Confirm') {
+  return new Promise(resolve => {
+    const host = document.createElement('div');
+    host.id = 'confirm-backdrop';
+    host.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(3,7,14,.62);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:20px';
+    host.innerHTML = `
+      <div role="dialog" aria-modal="true" aria-label="Confirm action" style="max-width:420px;width:100%;background:var(--ink800,#141b29);border:1px solid rgba(148,163,184,.22);border-radius:16px;padding:20px;box-shadow:0 24px 70px rgba(0,0,0,.6)">
+        <div style="font-weight:800;font-size:1.02rem;margin-bottom:8px">${esc(msg)}</div>
+        <div class="tiny" style="color:#94a3b8;margin-bottom:16px">This action takes effect immediately.</div>
+        <div class="row" style="gap:10px;justify-content:flex-end">
+          <button class="btn btn-ghost" data-act="no">Cancel</button>
+          <button class="btn btn-danger" data-act="yes">${esc(okLabel)}</button>
+        </div>
+      </div>`;
+    const done = (v) => { document.removeEventListener('keydown', onKey, true); host.remove(); resolve(v); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); done(false); }
+      else if (e.key === 'Enter') { e.stopPropagation(); done(true); }
+    };
+    host.addEventListener('click', (e) => {
+      const act = e.target.closest('[data-act]');
+      if (act) return done(act.dataset.act === 'yes');
+      if (e.target === host) done(false);
+    });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(host);
+    const yes = host.querySelector('[data-act="yes"]');
+    if (yes) yes.focus();
+  });
 }
 function showGuest(url) { document.getElementById('guest-out').innerHTML = `<div class="banner"><div class="tiny" style="margin-bottom:6px">Valid 60 minutes · free internet call to you</div><input class="input" value="${esc(url)}" readonly onclick="this.select()"><button class="btn btn-ghost" style="margin-top:8px;width:100%" onclick="copyText('${jsArg(url)}','Link copied')">Copy link</button></div>`; }
 

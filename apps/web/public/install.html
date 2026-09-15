@@ -83,7 +83,7 @@
     <h2>Install OpenCall on Android</h2>
     <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.23 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.25 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
       <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
@@ -114,7 +114,10 @@
   </div>
 
   <div class="sec">
-    <h3>🟢 What's new in v1.5.23</h3>
+    <h3>🟢 What's new in v1.5.25</h3>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.25 — easier to use, lighter on battery, smoother UI:</strong> <em>Web app:</em> buttons now show "Signing in… / Sending… / Dialing…" while they work (no more double-tap double-sends), lists show a spinner instead of flashing "No calls yet", error messages appear at the top where you can see them, confirmation popups replace raw browser dialogs, the gateway password is hidden behind a Show/Hide button, and background tabs stop polling entirely (battery + data savings). <em>Android app:</em> the app opens with a short "why these permissions" explainer instead of a stack of dialogs; the screen is now split into a simple Setup section (one code field + one button) and a paired section with everything else; the gateway notification shows live battery + online state with a Stop button; the service sleeps 20 s between polls when idle (was 4–5 s), backs off exponentially when offline, and wakes instantly when the network returns — dramatically less battery drain with the same instant response when calls or SMS come in. Install over the previous build — no re-pairing needed.</p>
+    </div>
     <div class="ok" style="margin-bottom:10px">
       <p><strong>v1.5.23 — credentials always visible + bulk ready:</strong> "📋 Show my credentials" now shows the real password straight from the server (stored encrypted server-side) — it always matches what the web tab shows, even after rotating from either side. No more "shown only once" — you can always look credentials up.</p>
     </div>
