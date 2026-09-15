@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -316,6 +316,66 @@
   /* iOS Safari: real viewport height (fixes keyboard jump) */
   body{min-height:100dvh}
   @supports not (height:100dvh){body{min-height:100vh}}
+
+  /* ================================================================
+     1.5.26 motion & polish system — one consistent language:
+     fast springy entrances, staggered lists, glowing feedback.
+     Everything respects prefers-reduced-motion.
+     ================================================================ */
+  @media (prefers-reduced-motion:no-preference){
+    :root{--spring:cubic-bezier(.22,1.2,.36,1);--ease:cubic-bezier(.25,.8,.3,1)}
+
+    /* staggered entrance for cards/lists inside a freshly rendered tab */
+    .main>div>*{animation:cardin .34s var(--spring) both}
+    .main>div>*:nth-child(1){animation-delay:.02s}
+    .main>div>*:nth-child(2){animation-delay:.06s}
+    .main>div>*:nth-child(3){animation-delay:.10s}
+    .main>div>*:nth-child(4){animation-delay:.14s}
+    .main>div>*:nth-child(5){animation-delay:.17s}
+    .main>div>*:nth-child(6){animation-delay:.20s}
+    .main>div>*:nth-child(n+7){animation-delay:.22s}
+    @keyframes cardin{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+
+    /* buttons: tactile press everywhere, not just primary */
+    .btn:active:not(:disabled){transform:scale(.965)}
+    .sidebtn:active{transform:translateX(2px) scale(.98)}
+
+    /* keypad keys: mint glow ripple on press */
+    .key:active{box-shadow:0 0 0 6px rgba(16,185,129,.14),0 0 18px rgba(16,185,129,.25)}
+
+    /* call button: breathing halo while idle-visible */
+    .callbtn{position:relative}
+    .callbtn::after{content:'';position:absolute;inset:-6px;border-radius:999px;
+      border:1px solid rgba(52,211,153,.35);animation:callhalo 2.2s ease-in-out infinite;pointer-events:none}
+    @keyframes callhalo{0%,100%{opacity:.25;transform:scale(1)}50%{opacity:.7;transform:scale(1.06)}}
+    .callbtn.end::after{display:none}
+
+    /* skeleton shimmer — premium loading instead of a lone spinner */
+    .skelwrap{display:flex;flex-direction:column;gap:10px;padding:6px 2px}
+    .skel{height:44px;border-radius:12px;position:relative;overflow:hidden;
+      background:rgba(148,163,184,.07);border:1px solid var(--ink700)}
+    .skel::after{content:'';position:absolute;inset:0;transform:translateX(-100%);
+      background:linear-gradient(90deg,transparent,rgba(148,163,184,.13),transparent);
+      animation:shimmer 1.3s infinite}
+    .skel.w60{width:60%}.skel.w80{width:80%}
+    @keyframes shimmer{to{transform:translateX(100%)}}
+
+    /* toasts: success / error variants with a glowing left edge */
+    .toast-ok{border-color:rgba(52,211,153,.5);background:rgba(6,26,19,.92);color:#a7f3d0;
+      box-shadow:0 12px 34px rgba(0,0,0,.5),0 0 24px rgba(16,185,129,.15) inset}
+    .toast-err{border-color:rgba(248,113,113,.5);background:rgba(30,8,8,.92);color:#fecaca;
+      box-shadow:0 12px 34px rgba(0,0,0,.5),0 0 24px rgba(220,38,38,.15) inset}
+
+    /* confirm modal: springy pop-in */
+    #confirm-backdrop>div{animation:modpop .3s var(--spring)}
+    @keyframes modpop{from{opacity:0;transform:scale(.92) translateY(10px)}to{opacity:1;transform:none}}
+
+    /* status pills: soft glow for live states */
+    .pill.ringing,.pill.active,.pill.answered{box-shadow:0 0 12px rgba(52,211,153,.25)}
+
+    /* number badges on sidebar: pop when they appear */
+    .sidebtn .badge{animation:modpop .3s var(--spring)}
+  }
 </style>
 <link rel="manifest" href="manifest.webmanifest">
 <!-- PERF FIX (1.5.25): font CSS no longer render-blocking — it loads async and
@@ -565,10 +625,10 @@ class CallRecorder {
       const { error: upErr } = await sb.storage.from('call-recordings').upload(path, blob, {
         contentType: 'audio/mpeg', upsert: true,
       });
-      if (upErr) { console.warn('recording upload failed', upErr); showToast('Recording upload failed'); return false; }
+      if (upErr) { console.warn('recording upload failed', upErr); showToast('Recording upload failed', 'err'); return false; }
       const { error: dbErr } = await sb.rpc('attach_call_recording', { p_call_id: callId, p_path: path });
       if (dbErr) { console.warn('attach recording failed', dbErr); return false; }
-      showToast('Call recording saved ✓ (see History)');
+      showToast('Call recording saved ✓ (see History)', 'ok');
       return true;
     } catch (e) {
       console.warn('recording finish failed', e);
@@ -794,7 +854,15 @@ let devicesLoaded = false;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 /* UX FIX (1.5.25): honest loading state for first fetches — replaces the old
    "false empty state" flash that made it look like data had vanished. */
-const loadingState = (msg) => `<div class="empty"><div class="spinner" aria-hidden="true"></div><div class="etitle">${esc(msg)}</div></div>`;
+/* 1.5.26: skeleton shimmer rows instead of a lone spinner — reads as
+   "content is coming", not "something is broken" */
+const loadingState = (msg) => `<div class="skelwrap" role="status" aria-label="${esc(msg)}">
+  <div class="skel"></div>
+  <div class="skel w80"></div>
+  <div class="skel w60"></div>
+  <div class="skel w80"></div>
+  <div class="skel w60"></div>
+</div>`;
 /* esc() is for HTML content — NOT safe inside inline JS strings: it turns '
    into &#39; which the HTML parser decodes back to ' and breaks the literal.
    jsArg() escapes for the JS-string-inside-an-attribute context. */
@@ -945,9 +1013,9 @@ async function setupPstn() {
 
 async function ensureTwilioDevice() {
   if (!pstnConfigured || twilioDevice) return twilioDevice;
-  if (typeof Twilio === 'undefined' || !Twilio.Device) { showToast('Voice SDK failed to load — phone calls unavailable'); return null; }
+  if (typeof Twilio === 'undefined' || !Twilio.Device) { showToast('Voice SDK failed to load — phone calls unavailable', 'err'); return null; }
   const { data: token, error } = await sb.rpc('twilio_voice_token');
-  if (error || !token) { showToast('Could not get a phone-call token: ' + honestError(error)); return null; }
+  if (error || !token) { showToast('Could not get a phone-call token: ' + honestError(error), 'err'); return null; }
   twilioDevice = new Twilio.Device(token, {
     codecPreferences: ['opus', 'pcmu'],
     allowIncomingWhileBusy: false,
@@ -959,7 +1027,7 @@ async function ensureTwilioDevice() {
     if (call.isPstn && call.phase !== 'idle') {
       setError('Phone error: ' + (err && err.message ? err.message : 'unknown'));
       endPstnCall('failed');
-    } else showToast('Phone error: ' + (err && err.message ? err.message : 'unknown'));
+    } else showToast('Phone error: ' + (err && err.message ? err.message : 'unknown'), 'err');
   });
   twilioDevice.on('tokenWillExpire', async () => {
     try {
@@ -984,6 +1052,7 @@ function wireTwilioCall(c) {
       call.remoteStream = c.getRemoteStream ? c.getRemoteStream() : null;
       if (call.remoteStream) { remoteAudio.srcObject = call.remoteStream; remoteAudio.play().catch(() => {}); }
       startRecordingIfPossible(localStream);   // 1.5.7: record both voices
+      relaxEventPoll();                        // 1.5.26: media is up — relax signaling
       renderApp();
       sb.rpc('update_pstn_call', { p_call_id: call.callId, p_event: 'answered', p_call_sid: c.parameters && c.parameters.CallSid }).then(() => {}, () => {});
     }
@@ -995,7 +1064,7 @@ function wireTwilioCall(c) {
 
 /* place a real phone call: DB row first (honest record), then Twilio dials the number */
 async function placePstnCall(e164) {
-  if (call.phase !== 'idle') { showToast('Already in a call — end it first'); return; }
+  if (call.phase !== 'idle') { showToast('Already in a call — end it first', 'err'); return; }
   const dest = e164.replace(/[\s()-]/g, '');
   if (!/^\+[1-9][0-9]{5,15}$/.test(dest)) { setError('Enter the number in international format, e.g. +995599123456'); return; }
   setError('');
@@ -1093,7 +1162,7 @@ async function refreshDevices() {
       if (fresh) {
         pairingCode = null; pairingKnownIds = null;
         if (pairingPollTimer) { clearInterval(pairingPollTimer); pairingPollTimer = null; }
-        showToast('Android device paired ✓'); renderApp(); return;
+        showToast('Android device paired ✓', 'ok'); renderApp(); return;
       }
     }
     if (!visEq(nextVis, prevVis) || gwChanged) renderApp();   // re-render only on real change
@@ -1119,7 +1188,10 @@ async function sendSms(e) {
     smsBody = '';
     showToast(gatewayFlavor === 'bridge'
       ? 'SMS sent to your phone — tap the notification to send it from your number'
-      : 'SMS queued — your phone sends it from your number');
+      : 'SMS queued — your phone sends it from your number', 'ok');
+    // 1.5.26: refresh optimistically but keep the composer usable — the
+    // refresh is fire-and-forget so the user can type the next message
+    // immediately instead of staring at a frozen list.
     refreshSms();
   }, 'Sending');
 }
@@ -1147,7 +1219,7 @@ async function startPairing() {
 async function unpairDevice(id) {
   if (!(await appConfirm('Unpair this phone? It will stop sending SMS and calls until paired again.', 'Unpair'))) return;
   await sb.rpc('remove_gateway_device', { p_device_id: id }).then(() => {}, () => {});
-  showToast('Device unpaired');
+  showToast('Device unpaired', 'ok');
   await refreshDevices();
 }
 
@@ -1176,7 +1248,7 @@ async function revokeApiKey(id) {
   if (!(await appConfirm('Revoke this API key? Every app using it will immediately lose access.', 'Revoke key'))) return;
   const { error } = await sb.rpc('revoke_api_key', { p_id: id });
   if (error) return setError(honestError(error));
-  showToast('Key revoked');
+  showToast('Key revoked', 'ok');
   await refreshApiKeys();
 }
 
@@ -1250,7 +1322,7 @@ async function disableSmsGw() {
   const { error } = await sb.rpc('disable_sms_gateway');
   if (error) return setError(honestError(error));
   freshGwPassword = null;
-  showToast('SMS Gateway disabled');
+  showToast('SMS Gateway disabled', 'ok');
   await refreshSmsGw();
   await refreshGwLog();
 }
@@ -1285,7 +1357,7 @@ function gwExample(kind) {
 }
 
 function copyText(txt, msg) {
-  const done = () => showToast(msg || 'Copied');
+  const done = () => showToast(msg || 'Copied', 'ok');
   if (navigator.clipboard && window.isSecureContext) {
     navigator.clipboard.writeText(txt).then(done, () => fallbackCopy(txt, done));
   } else fallbackCopy(txt, done);
@@ -1318,7 +1390,7 @@ function fallbackCopy(txt, done) {
 
 /* outbound: real cellular call dialed by your Android — free, your caller ID */
 async function placeGatewayCall(e164) {
-  if (call.phase !== 'idle') { showToast('Already in a call — end it first'); return; }
+  if (call.phase !== 'idle') { showToast('Already in a call — end it first', 'err'); return; }
   const dest = e164.replace(/[\s()-]/g, '');
   if (!/^\+[1-9][0-9]{5,15}$/.test(dest)) { setError('Enter the number in international format, e.g. +995599123456'); return; }
   setError('');
@@ -1388,6 +1460,7 @@ async function joinBridge() {
   renderApp();
   startEventPoll();
   await startMedia('callee');
+  relaxEventPoll();   // 1.5.26: bridge joined → relax signaling cadence
 }
 
 async function declineGateway() {
@@ -1404,15 +1477,15 @@ async function declineGateway() {
    fallback older). 1.5.4 phones answer call_state_probe with
    icsBound:false → we honestly say "update the app". */
 async function gwCmd(kind, payload) {
-  if (!gatewayOnline?.id) { showToast('No gateway device online'); return null; }
+  if (!gatewayOnline?.id) { showToast('No gateway device online', 'err'); return null; }
   const { data, error } = await sb.rpc('queue_gateway_command',
     { p_device_id: gatewayOnline.id, p_kind: kind, p_payload: payload || {} });
-  if (error) { showToast('Command failed: ' + honestError(error)); return null; }
+  if (error) { showToast('Command failed: ' + honestError(error), 'err'); return null; }
   return data;
 }
 
 async function gwToggleMute(btn) {
-  if (!gatewayFull) { showToast('Update the phone app to the latest version for this'); return; }
+  if (!gatewayFull) { showToast('Update the phone app to the latest version for this', 'err'); return; }
   const want = !gatewayMute;
   const id = await gwCmd(want ? 'mute_call' : 'unmute_call');
   if (!id) return;
@@ -1427,7 +1500,7 @@ async function gwToggleMute(btn) {
 }
 
 async function gwToggleSpeaker(btn) {
-  if (!gatewayFull) { showToast('Update the phone app to the latest version for this'); return; }
+  if (!gatewayFull) { showToast('Update the phone app to the latest version for this', 'err'); return; }
   const want = !gatewaySpeaker;
   const id = await gwCmd(want ? 'speaker_on' : 'speaker_off');
   if (!id) return;
@@ -1438,13 +1511,13 @@ async function gwToggleSpeaker(btn) {
 }
 
 async function gwToggleHold(btn) {
-  if (!gatewayFull) { showToast('Update the phone app to the latest version for this'); return; }
+  if (!gatewayFull) { showToast('Update the phone app to the latest version for this', 'err'); return; }
   const want = !gatewayHeld;
   const id = await gwCmd(want ? 'hold_call' : 'resume_call');
   if (!id) return;
   gatewayHeld = want;
   renderApp();
-  showToast(want ? 'Call on hold' : 'Call resumed');
+  showToast(want ? 'Call on hold' : 'Call resumed', 'ok');
 }
 
 /* gatewayOnStatus — exact call state pushed by the phone's InCallService */
@@ -1459,6 +1532,7 @@ function gatewayOnStatus(status) {
     // talk time (on-net and PSTN paths already reset it on answer).
     call.startedAt = Date.now();
     renderApp();
+    relaxEventPoll();   // 1.5.26: gateway answered → relax signaling cadence
   }
   if (['rejected','no_answer','failed','cancelled','completed'].includes(status)) {
     endCallLocal(status === 'completed' ? 'ended' : status.replace('_', ' '));
@@ -1589,6 +1663,7 @@ function onCallUpdated(status) {
     call.phase = 'active'; call.startedAt = Date.now();
     renderApp();
     startMedia('caller');
+    relaxEventPoll();   // 1.5.26: answered → relax signaling cadence
   }
   if (['rejected','no_answer','failed','cancelled','completed'].includes(status)) {
     endCallLocal(status === 'completed' ? 'ended' : status.replace('_', ' '));
@@ -1659,7 +1734,7 @@ function handleSignal(p) {
         await pc.setLocalDescription(answer);
         await waitIceGather(pc);
         await sendSignal('answer', pc.localDescription);
-        if (isRenego) showToast('Peer microphone connected');
+        if (isRenego) showToast('Peer microphone connected', 'ok');
       } else if (p.kind === 'answer') {
         if (pc.signalingState !== 'have-local-offer') return;         // stale or duplicate answer
         await pc.setRemoteDescription(new RTCSessionDescription(p.data));
@@ -1693,10 +1768,15 @@ function waitIceGather(pconn, ms = 2500) {
   });
 }
 
-/* durable events drain: runs until ICE connects; also carries call status */
+/* durable events drain: runs until ICE connects; also carries call status.
+   1.5.26 engine: adaptive cadence — fast (1.2s) while ringing/connecting so
+   pickup feels instant, then relaxes to 3s once media is connected (the poll
+   only carries mid-call renegotiation + bye after that). Halts when hidden. */
 function startEventPoll() {
+  pollFast = false;
   stopEventPoll();
   pollTimer = setInterval(async () => {
+    if (document.hidden) return;
     if (!call.callId) { stopEventPoll(); return; }
     try {
       const { data, error } = await activeSb().rpc('get_call_events', { p_call_id: call.callId, p_after_seq: eventSeq });
@@ -1722,10 +1802,32 @@ function startEventPoll() {
   }, 1200);
 }
 function stopEventPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+/* 1.5.26: once media is up, relax the signaling poll — fewer requests while
+   you talk, same instant teardown on hangup (bye still arrives within 3s). */
+function relaxEventPoll() {
+  if (!pollTimer || pollFast) return;
+  pollFast = true;
+  stopEventPoll();
+  pollTimer = setInterval(async () => {
+    if (document.hidden) return;
+    if (!call.callId) { stopEventPoll(); return; }
+    try {
+      const { data, error } = await activeSb().rpc('get_call_events', { p_call_id: call.callId, p_after_seq: eventSeq });
+      if (!error) for (const ev of (data || [])) {
+        eventSeq = Math.max(eventSeq, ev.seq);
+        if (ev.kind === 'bye') endCallLocal('ended');
+        else if (ev.kind === 'offer') handleSignal({ kind: 'offer', data: ev.payload, callId: call.callId });
+        else if (ev.kind === 'answer') handleSignal({ kind: 'answer', data: ev.payload, callId: call.callId });
+        else if (ev.kind === 'ice' && ev.sender !== call.mySender) handleSignal({ kind: 'ice', data: ev.payload, callId: call.callId });
+      }
+    } catch {}
+  }, 3000);
+}
+let pollFast = false;
 
 /* ---------------- calls (user-to-user) ---------------- */
 async function placeCall(dest) {
-  if (call.phase !== 'idle') { showToast('Already in a call — end it first'); return; }
+  if (call.phase !== 'idle') { showToast('Already in a call — end it first', 'err'); return; }
   const d = (dest || dial).trim();
   if (!d) return;
   const dst = d.includes('@') ? d.toLowerCase() : d.toLowerCase() + '@opencall';
@@ -1880,10 +1982,10 @@ async function retryMic(btn) {
     } catch {}
     call.stateNote = '';
     renderApp();
-    showToast('Microphone connected');
+    showToast('Microphone connected', 'ok');
   } else {
     if (btn) { btn.disabled = false; btn.textContent = 'Retry mic'; }
-    showToast('still no microphone — you are in listen-only mode');
+    showToast('still no microphone — you are in listen-only mode', 'err');
   }
 }
 window.retryMic = retryMic;
@@ -1928,7 +2030,7 @@ async function startMedia(role) {
       } else if (pc.connectionState === 'new' || pc.connectionState === 'failed') {
         call.stateNote = 'audio bridge did not connect — the call is on your phone only. End it and retry; both devices need working internet.';
         renderApp();
-        showToast('⚠ Audio bridge failed — call audio is NOT in this browser');
+        showToast('⚠ Audio bridge failed — call audio is NOT in this browser', 'err');
       }
     }, 18000);
   }
@@ -2008,7 +2110,7 @@ async function recordingUrl(callId, path) {
   const hit = recUrlCache.get(callId);
   if (hit && Date.now() - hit.at < 50 * 60 * 1000) return hit.url;   // signed for 60 min
   const { data, error } = await sb.storage.from('call-recordings').createSignedUrl(path, 3600);
-  if (error || !data?.signedUrl) { showToast('Recording unavailable: ' + honestError(error || { message: 'not found' })); return null; }
+  if (error || !data?.signedUrl) { showToast('Recording unavailable: ' + honestError(error || { message: 'not found' }), 'err'); return null; }
   recUrlCache.set(callId, { url: data.signedUrl, at: Date.now() });
   return data.signedUrl;
 }
@@ -2874,7 +2976,7 @@ function cpMute(btn) {
   }
   renderApp();
 }
-function cpPhoneMic(btn) { return gatewayFull ? gwToggleMute(btn) : showToast('Update the phone app to the latest version for this'); }
+function cpPhoneMic(btn) { return gatewayFull ? gwToggleMute(btn) : showToast('Update the phone app to the latest version for this', 'err'); }
 function cpSpeaker(btn) { return gwToggleSpeaker(btn); }
 function cpHold(btn) { return gwToggleHold(btn); }
 let dtmfOpen = false;
@@ -3001,10 +3103,11 @@ function honestError(err) {
   return m.length > 220 ? m.slice(0, 220) + '…' : m;
 }
 function fmtDur(s) { const m = Math.floor(s / 60), r = s % 60; return m ? `${m}m ${r}s` : `${r}s`; }
-function showToast(msg) {
+function showToast(msg, kind) {
   // stack: each new toast sits BELOW the previous one in a flex column host — no overlap.
   // The host is #toast-stack (rendered in the app shell); if it is missing (login/guest
   // screens), one is created on the fly so toasts still work.
+  // 1.5.26: kind 'ok' | 'err' gets a tinted variant; default stays neutral.
   let stack = document.getElementById('toast-stack');
   if (!stack) {
     stack = document.createElement('div');
@@ -3014,7 +3117,7 @@ function showToast(msg) {
     document.body.appendChild(stack);
   }
   const t = document.createElement('div');
-  t.className = 'banner toast-in';
+  t.className = 'banner toast-in' + (kind === 'ok' ? ' toast-ok' : kind === 'err' ? ' toast-err' : '');
   t.style.cssText = 'pointer-events:auto;box-shadow:0 12px 34px rgba(0,0,0,.5);margin-top:0';
   if (stack.childElementCount === 0) t.style.marginTop = '14px';
   t.textContent = msg;

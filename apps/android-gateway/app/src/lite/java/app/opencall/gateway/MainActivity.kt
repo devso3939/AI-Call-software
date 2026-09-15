@@ -4,9 +4,14 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.view.animation.Animation
+import android.view.animation.ScaleAnimation
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -32,6 +37,9 @@ import org.json.JSONObject
 class MainActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
+    private lateinit var statusSub: TextView
+    private lateinit var statusPill: TextView
+    private lateinit var infoBody: TextView
     private lateinit var codeInput: EditText
     private lateinit var pairBtn: Button
     private lateinit var simInput: EditText
@@ -62,6 +70,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 1.5.26 — deep navy canvas behind everything (matches the web app).
+        window.decorView.setBackgroundColor(Ui.BG)
         buildUi()
         requestAllPermissions()
     }
@@ -80,23 +90,34 @@ class MainActivity : AppCompatActivity() {
     // ============ UI ============
 
     private fun buildUi() {
-        val pad = (16 * resources.displayMetrics.density).toInt()
+        val pad = Ui.dp(this, 16)
+
+        // 1.5.26 — header + live status pill, same design language as the
+        // GATEWAY flavor (shared Ui.kt).
         statusText = TextView(this).apply {
-            setPadding(pad, pad, pad, pad / 2)
-            textSize = 15f
+            setPadding(pad, pad, pad, Ui.dp(this@MainActivity, 8))
+            textSize = 20f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Ui.INK)
+            text = "OpenCall Bridge"
         }
-        codeInput = EditText(this).apply {
-            hint = "6-digit pairing code (from Devices tab)"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-            setPadding(pad, pad / 2, pad, pad / 2)
+        statusSub = TextView(this).apply {
+            setPadding(pad, 0, pad, Ui.dp(this@MainActivity, 12))
+            textSize = 13f
+            setTextColor(Ui.INK_DIM)
         }
-        pairBtn = button("Pair this phone") { doPair() }
-        simInput = EditText(this).apply {
-            hint = "Your SIM number (e.g. +995599123456)"
-            inputType = android.text.InputType.TYPE_CLASS_PHONE
-            setPadding(pad, pad / 2, pad, pad / 2)
+        statusPill = Ui.statusDot(this, false)
+        val pillRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(pad, 0, pad, Ui.dp(this@MainActivity, 12))
         }
-        simBtn = button("Save SIM number") {
+        pillRow.addView(statusPill)
+
+        codeInput = Ui.input(this, "6-digit pairing code (from Devices tab)", android.text.InputType.TYPE_CLASS_NUMBER)
+        pairBtn = Ui.button(this, "Pair this phone", primary = true) { doPair() }
+        simInput = Ui.input(this, "Your SIM number (e.g. +995599123456)", android.text.InputType.TYPE_CLASS_PHONE)
+        simBtn = Ui.button(this, "Save SIM number", primary = false) {
             val n = simInput.text.toString().trim()
             if (!n.matches(Regex("^\\+[1-9][0-9]{3,15}$"))) {
                 toast("Enter the number in international format, e.g. +995599123456"); return@button
@@ -105,60 +126,105 @@ class MainActivity : AppCompatActivity() {
             log("✔ SIM number saved — shown on your Devices page")
             refresh()
         }
-        startBtn = button("Start bridge") {
+        startBtn = Ui.button(this, "Start bridge", primary = true) {
             if (!DeviceStore.isPaired(this@MainActivity)) { toast("Pair first"); return@button }
             BridgeService.start(this@MainActivity)
             refresh()
         }
-        stopBtn = button("Stop bridge") {
+        stopBtn = Ui.button(this, "Stop bridge", primary = false, danger = true) {
             BridgeService.stop(this@MainActivity)
             refresh()
         }
-        unpairBtn = button("Unpair this device") {
+        unpairBtn = Ui.button(this, "Unpair this device", primary = false, danger = true) {
             DeviceStore.clear(this@MainActivity)
             refresh()
         }
         logBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
+        // 1.5.26 — compact status body + the BRIDGE-only explainer.
+        infoBody = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Ui.INK_DIM)
+            setPadding(pad, 4, pad, 4)
+        }
+        val bridgeNote = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Ui.INK_DIM)
+            setPadding(pad, Ui.dp(this@MainActivity, 4), pad, 0)
+            text = "⚠ This is BRIDGE — tap mode only. For FULLY AUTOMATIC calls + SMS from your SIM (nothing to tap), install the separate OpenCall GATEWAY apk: github.com/devso3939/AI-Call-software"
+        }
+
         val root = ScrollView(this).apply {
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
+                setPadding(0, 0, 0, Ui.dp(this@MainActivity, 24))
                 addView(statusText)
-                addView(codeInput)
-                addView(pairBtn)
-                addView(simInput)
-                addView(simBtn)
-                addView(startBtn)
-                addView(stopBtn)
-                addView(unpairBtn)
+                addView(statusSub)
+                addView(pillRow)
+                addView(cardOf("Setup", codeInput, pairBtn, simInput, simBtn))
+                addView(spacer())
+                addView(cardOf("Bridge", startBtn, stopBtn, infoBody, bridgeNote))
+                addView(spacer())
+                addView(cardOf("Danger zone", unpairBtn))
                 addView(TextView(this@MainActivity).apply {
                     text = "Activity log"
-                    setPadding(pad, pad, pad, 4)
+                    textSize = 13f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(Ui.INK_DIM)
+                    setPadding(pad, pad, pad, Ui.dp(this@MainActivity, 4))
                 })
                 addView(logBox)
             })
         }
         setContentView(root)
+        if (!reducedMotion()) {
+            val l = root.getChildAt(0) as LinearLayout
+            (0 until l.childCount).forEach { i -> Ui.animateIn(l.getChildAt(i), i) }
+        }
     }
 
-    private fun button(label: String, onClick: () -> Unit): Button =
-        Button(this).apply {
-            text = label
-            setPadding(16, 8, 16, 8)
-            setOnClickListener { onClick() }
+    /** Wrap views in a rounded card with a title. */
+    private fun cardOf(title: String, vararg views: View): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.card(this)
+            val t = Ui.dp(this@MainActivity, 6)
+            setPadding(t, t, t, t)
         }
+        card.addView(Ui.cardTitle(this, title, Ui.dp(this, 8), big = true))
+        for (v in views) {
+            val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            wrap.addView(v, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            card.addView(wrap)
+        }
+        return card
+    }
+
+    private fun spacer(): View = View(this).apply {
+        layoutParams = LinearLayout.LayoutParams(1, Ui.dp(this@MainActivity, 12))
+    }
+
+    /** Honor the system "remove animations" accessibility setting. */
+    private fun reducedMotion(): Boolean = try {
+        android.provider.Settings.Global.getFloat(
+            contentResolver,
+            android.provider.Settings.Global.TRANSITION_ANIMATION_SCALE, 1f,
+        ) == 0f
+    } catch (_: Exception) { false }
 
     private fun log(line: String) {
         runOnUiThread {
             val t = TextView(this).apply {
                 text = line
                 textSize = 12f
+                setTextColor(Ui.INK_DIM)
                 setPadding(
-                    (16 * resources.displayMetrics.density).toInt(), 2,
-                    (16 * resources.displayMetrics.density).toInt(), 2,
+                    Ui.dp(this@MainActivity, 16), Ui.dp(this@MainActivity, 2),
+                    Ui.dp(this@MainActivity, 16), Ui.dp(this@MainActivity, 2),
                 )
             }
             logBox.addView(t, 0)
+            if (!reducedMotion()) Ui.slideInLog(t)
             if (logBox.childCount > 30) logBox.removeViewAt(logBox.childCount - 1)
         }
     }
@@ -207,27 +273,36 @@ class MainActivity : AppCompatActivity() {
         val vCode = pkgInfo?.let { if (Build.VERSION.SDK_INT >= 28) it.longVersionCode else @Suppress("DEPRECATION") it.versionCode.toLong() } ?: -1L
 
         val micOk = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        val sb = StringBuilder()
-        sb.append("OpenCall Bridge v$vName ($vCode)\n")
-        sb.append("package: $packageName\n\n")
-        sb.append("Paired: ${if (paired) "yes" else "no"}\n")
-        sb.append("Bridge service: ${if (svcRunning) "RUNNING" else "stopped"}\n")
-        sb.append("Microphone: ${if (micOk) "OK" else "permission missing"}\n")
-        val sim = DeviceStore.simNumber(this)
-        sb.append("SIM number: ${sim ?: "not set (optional)"}\n")
-        if (paired) {
-            sb.append("Device: ${DeviceStore.deviceId(this)?.take(8)}…\n")
+
+        // 1.5.26 — header: app name + version, then the live status pill.
+        statusSub.text = "v$vName · package $packageName"
+        val prevPillText = statusPill.text.toString()
+        val pillText = if (svcRunning) "●  RUNNING" else "○  stopped"
+        statusPill.text = pillText
+        statusPill.background = Ui.statusDot(this, svcRunning).background
+        statusPill.setTextColor(if (svcRunning) 0xFFB7F5DF.toInt() else 0xFFFCA5A5.toInt())
+        if (prevPillText != pillText && !reducedMotion()) {
+            val pop = ScaleAnimation(
+                0.9f, 1f, 0.9f, 1f,
+                Animation.RELATIVE_TO_SELF, 0.5f,
+                Animation.RELATIVE_TO_SELF, 0.5f,
+            ).apply { duration = 220 }
+            statusPill.startAnimation(pop)
         }
-        sb.append("\n⚠ This is BRIDGE — tap mode only. Android forbids\n")
-        sb.append("auto-dialing/SMS without SMS+Phone permissions.\n")
-        sb.append("For FULLY AUTOMATIC calls + SMS from your SIM\n")
-        sb.append("(nothing to tap), install the separate OpenCall\n")
-        sb.append("GATEWAY apk: github.com/devso3939/AI-Call-software\n")
-        statusText.text = sb.toString()
+        if (svcRunning) Ui.pulse(statusPill) else Ui.stopPulse(statusPill)
+
+        // compact status body (was the old multi-line dump)
+        val sim = DeviceStore.simNumber(this)
+        val info = buildString {
+            append("Paired: ${if (paired) "yes" else "no"} · Microphone: ${if (micOk) "OK" else "permission missing"}")
+            append("\nSIM number: ${sim ?: "not set (optional)"}")
+            if (paired) append("\nDevice: ${DeviceStore.deviceId(this@MainActivity)?.take(8)}…")
+        }
+        infoBody.text = info
 
         codeInput.visibility = if (paired) View.GONE else View.VISIBLE
         pairBtn.visibility = if (paired) View.GONE else View.VISIBLE
-        simInput.setText(DeviceStore.simNumber(this) ?: "")
+        simInput.setText(sim ?: "")
         simInput.hint = if (paired) "Your SIM number (e.g. +995599123456)" else "Pair first, then set your SIM number"
         simBtn.isEnabled = paired
         startBtn.isEnabled = paired && !svcRunning

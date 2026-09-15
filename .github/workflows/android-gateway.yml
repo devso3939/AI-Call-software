@@ -99,12 +99,18 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.25 · versionCode 31). Two APKs:
+            build (v1.5.26 · versionCode 32). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.26 highlights — a real design system, everywhere
+            - Web: spring-eased card entrances, shimmering skeleton loader, tinted toasts (success/error/warning), springy confirm dialog, halo glow on primary buttons — all respecting the system "reduce motion" setting
+            - Android (both APKs): full redesign on one shared design system — navy cards with soft borders, pill buttons with ripple + springy press, rounded inputs, colored ✔/✘ permission marks
+            - Android: live breathing status pill while the gateway runs, cross-fade between setup and paired screens, staggered entrance animations, log lines slide in as they arrive
+            - Engine: adaptive signaling poll — fast (1.2 s) while a call is live, relaxes to 3 s once media connects; instant response with less battery
 
             ### v1.5.25 highlights — easier to use, lighter on battery
             - Web: button pending states ("Sending…", "Dialing…") prevent double-taps; spinners instead of false empty lists; errors at top of screen; styled confirm dialogs; gateway password hidden behind Show/Hide; background tabs stop polling entirely

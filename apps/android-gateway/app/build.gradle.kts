@@ -11,8 +11,8 @@ android {
         applicationId = "app.opencall.gateway2"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "1.5.25"
+        versionCode = 32
+        versionName = "1.5.26"
         resourceConfigurations += listOf("en")
     }
 

@@ -4,12 +4,16 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.view.animation.Animation
+import android.view.animation.ScaleAnimation
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -46,6 +50,8 @@ class MainActivity : AppCompatActivity() {
     )
 
     private lateinit var statusText: TextView
+    private lateinit var statusSub: TextView
+    private lateinit var statusPill: TextView
     private lateinit var codeInput: EditText
     private lateinit var pairBtn: Button
     private lateinit var simInput: EditText
@@ -69,10 +75,12 @@ class MainActivity : AppCompatActivity() {
     // username/password that third-party services (e.g. SmartBookly) use
     // to send SMS through this SIM via the cloud API.
     private lateinit var gwText: TextView
-    private lateinit var gwTitle: TextView
     private lateinit var gwUserInput: EditText
     private lateinit var gwCreateBtn: Button
     private lateinit var gwStatusBtn: Button
+
+    // 1.5.26 — compact device status body (paired/permissions/SIM/device id).
+    private lateinit var infoCardBody: TextView
 
     // 1.5.8 — "Display over other apps" row: grants SYSTEM_ALERT_WINDOW,
     // which EXEMPTS the app from the Android 10+ background-activity-start
@@ -88,6 +96,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 1.5.26 — deep navy canvas behind everything (matches the web app).
+        window.setBackgroundDrawableResource(android.R.color.transparent)
+        window.decorView.setBackgroundColor(Ui.BG)
         buildUi()
         // 1.5.25 — don't fire a stack of permission dialogs before the user
         // has read a single word about what this app does. First launch shows
@@ -388,43 +399,67 @@ class MainActivity : AppCompatActivity() {
     private lateinit var setupSection: LinearLayout
     private lateinit var pairedSection: LinearLayout
 
-    private fun sectionTitle(text: String, pad: Int, big: Boolean = false): TextView =
-        TextView(this).apply {
-            this.text = text
-            textSize = if (big) 15f else 13f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(pad, pad, pad, 4)
+    /** Wrap views in a rounded card with a title and vertical padding. */
+    private fun cardOf(title: String?, vararg views: View): LinearLayout {
+        val pad = Ui.dp(this, 16)
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.card(this@MainActivity)
+            val t = Ui.dp(this@MainActivity, 6)
+            setPadding(t, t, t, t)
         }
+        if (title != null) card.addView(Ui.cardTitle(this, title, pad / 2, big = true))
+        for (v in views) {
+            val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            wrap.addView(v, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            card.addView(wrap)
+        }
+        return card
+    }
 
     private fun buildUi() {
-        val pad = (16 * resources.displayMetrics.density).toInt()
+        val pad = Ui.dp(this, 16)
+
+        // 1.5.26 — status header: app name + version line, then a live
+        // status pill (RUNNING / stopped) that breathes while the service
+        // is up. The long multi-line dump moved into the paired card below.
         statusText = TextView(this).apply {
-            setPadding(pad, pad, pad, pad / 2)
-            textSize = 15f
+            setPadding(pad, pad, pad, Ui.dp(this@MainActivity, 8))
+            textSize = 20f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Ui.INK)
+            text = "OpenCall Gateway"
         }
+        statusSub = TextView(this).apply {
+            setPadding(pad, 0, pad, Ui.dp(this@MainActivity, 12))
+            textSize = 13f
+            setTextColor(Ui.INK_DIM)
+        }
+        statusPill = Ui.statusDot(this, false)
+        val pillRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(pad, 0, pad, Ui.dp(this@MainActivity, 12))
+        }
+        pillRow.addView(statusPill)
 
         // --- permission center rows ---
-        grantBtn = button("Grant missing permissions") {
+        grantBtn = Ui.button(this, "Grant missing permissions", primary = true) {
             if (permRequestInFlight) { toast("A permission dialog is already open"); return@button }
             startGrantFlow()
         }
-        installHelpBtn = button("Blocked at install? Open unblock guide") { showInstallHelp() }
+        installHelpBtn = Ui.button(this, "Blocked at install? Open unblock guide", primary = false) { showInstallHelp() }
         permBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
         // --- background-calls setup card (1.5.6) ---
         val bgCard = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val bgTitle = TextView(this).apply {
-            text = "Background calls"
-            textSize = 15f
-            setPadding(pad, pad / 2, pad, 4)
-        }
         bgDialerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         bgDialerText = TextView(this).apply {
             textSize = 12f
             setPadding(pad, 0, 8, 0)
         }
         bgDialerRow.addView(bgDialerText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        bgDialerBtn = button("Set as phone app") { openDefaultDialerScreen() }
+        bgDialerBtn = Ui.button(this, "Set as phone app", primary = false) { openDefaultDialerScreen() }
         bgDialerRow.addView(bgDialerBtn)
 
         val bgManageText = TextView(this).apply {
@@ -432,20 +467,16 @@ class MainActivity : AppCompatActivity() {
             setPadding(pad, 4, pad, 0)
             text = "Allow managing calls (Android 13+): Settings → Apps → OpenCall Gateway → ⋮ → Allow managing calls. Lets the phone answer/decline/mute while the screen is off."
         }
-        bgManageBtn = button("Open app info") { openManageCallsScreen() }
+        bgManageBtn = Ui.button(this, "Open app info", primary = false) { openManageCallsScreen() }
 
         // 1.5.8 — overlay grant row (needed for the silent-dialer fallback)
         bgOverlayText = TextView(this).apply {
             textSize = 12f
             setPadding(pad, 4, pad, 0)
         }
-        bgOverlayBtn = button("Allow display over other apps") { openOverlaySettings() }
+        bgOverlayBtn = Ui.button(this, "Allow display over other apps", primary = false) { openOverlaySettings() }
 
-        agentToggle = Button(this).apply {
-            setPadding(16, 8, 16, 8)
-            setOnClickListener { toggleAgentMode() }
-        }
-        bgCard.addView(bgTitle)
+        agentToggle = Ui.button(this, "Agent mode", primary = false) { toggleAgentMode() }
         bgCard.addView(bgDialerRow)
         bgCard.addView(bgManageText)
         bgCard.addView(bgManageBtn)
@@ -455,35 +486,27 @@ class MainActivity : AppCompatActivity() {
 
         // 1.5.17: SMS Gateway credentials card — 1.5.21 UI/UX: bigger title,
         // status line first, single clear primary action.
-        gwTitle = TextView(this).apply {
-            text = "📡 SMS Gateway"
-            textSize = 16f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(pad, 8, pad, 4)
-        }
+        // 1.5.26 — the standalone gwTitle header was folded into the card
+        // title (cardOf already renders "📡 SMS Gateway…"); the old
+        // multi-line status dump is now the compact infoCardBody.
         gwText = TextView(this).apply {
             textSize = 13f
+            setTextColor(Ui.INK)
             setPadding(pad, 4, pad, 4)
         }
-        gwUserInput = EditText(this).apply {
-            hint = "Choose a username (e.g. smartbookly)"
-            setPadding(pad, pad / 2, pad, pad / 2)
+        infoCardBody = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Ui.INK_DIM)
+            setPadding(pad, 4, pad, 4)
         }
-        gwCreateBtn = button("⚡ Create gateway credentials") { doGatewaySetup() }
-        gwStatusBtn = button("📋 Show my credentials") { doGatewayStatus() }
+        gwUserInput = Ui.input(this, "Choose a username (e.g. smartbookly)", android.text.InputType.TYPE_CLASS_TEXT)
+        gwCreateBtn = Ui.button(this, "⚡ Create gateway credentials", primary = true) { doGatewaySetup() }
+        gwStatusBtn = Ui.button(this, "📋 Show my credentials", primary = false) { doGatewayStatus() }
 
-        codeInput = EditText(this).apply {
-            hint = "6-digit pairing code (from Devices tab)"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-            setPadding(pad, pad / 2, pad, pad / 2)
-        }
-        pairBtn = button("Pair this phone") { doPair() }
-        simInput = EditText(this).apply {
-            hint = "Your SIM number (e.g. +995599123456)"
-            inputType = android.text.InputType.TYPE_CLASS_PHONE
-            setPadding(pad, pad / 2, pad, pad / 2)
-        }
-        simBtn = button("Save SIM number") {
+        codeInput = Ui.input(this, "6-digit pairing code (from Devices tab)", android.text.InputType.TYPE_CLASS_NUMBER)
+        pairBtn = Ui.button(this, "Pair this phone", primary = true) { doPair() }
+        simInput = Ui.input(this, "Your SIM number (e.g. +995599123456)", android.text.InputType.TYPE_CLASS_PHONE)
+        simBtn = Ui.button(this, "Save SIM number", primary = false) {
             val n = simInput.text.toString().trim()
             if (!n.matches(Regex("^\\+[1-9][0-9]{3,15}$"))) {
                 toast("Enter the number in international format, e.g. +995599123456"); return@button
@@ -493,7 +516,7 @@ class MainActivity : AppCompatActivity() {
             refresh()
         }
         autoDetectSim()
-        startBtn = button("Start gateway") {
+        startBtn = Ui.button(this, "Start gateway", primary = true) {
             if (!DeviceStore.isPaired(this@MainActivity)) { toast("Pair first"); return@button }
             val missing = missingCriticalPerms()
             if (missing.isNotEmpty()) {
@@ -520,11 +543,11 @@ class MainActivity : AppCompatActivity() {
             GatewayService.start(this@MainActivity)
             refresh()
         }
-        stopBtn = button("Stop gateway") {
+        stopBtn = Ui.button(this, "Stop gateway", primary = false, danger = true) {
             GatewayService.stop(this@MainActivity)
             refresh()
         }
-        unpairBtn = button("Unpair this device") {
+        unpairBtn = Ui.button(this, "Unpair this device", primary = false, danger = true) {
             // Server-side removal happens from the web app; here we just forget credentials.
             DeviceStore.clear(this@MainActivity)
             refresh()
@@ -532,91 +555,138 @@ class MainActivity : AppCompatActivity() {
         logBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
         // 1.5.25 — two top-level sections, toggled by refresh():
-        //  • setupSection (unpaired): the one-time pairing path — one input,
-        //    one button, one hint. Nothing else on screen.
+        //  • setupSection (unpaired): the one-time pairing path.
         //  • pairedSection (paired): permissions, background calls, gateway
         //    credentials, SIM number, start/stop, unpair.
+        // 1.5.26 — each section's content is grouped into rounded cards and
+        // the whole section cross-fades when pairing state flips.
         setupSection = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        setupSection.addView(sectionTitle("Setup", pad, big = true))
-        setupSection.addView(codeInput)
-        setupSection.addView(pairBtn)
-        setupSection.addView(TextView(this@MainActivity).apply {
-            text = "How it works: open the web app → Devices tab → Create pairing code → type it here. After pairing you'll set your SIM number and grant permissions."
-            textSize = 12f
-            setPadding(pad, 4, pad, pad)
-        })
-        setupSection.addView(installHelpBtn)
+        setupSection.addView(
+            cardOf(
+                "Setup",
+                codeInput,
+                pairBtn,
+                TextView(this@MainActivity).apply {
+                    text = "How it works: open the web app → Devices tab → Create pairing code → type it here. After pairing you'll set your SIM number and grant permissions."
+                    textSize = 12f
+                    setTextColor(Ui.INK_DIM)
+                    setPadding(pad, Ui.dp(this@MainActivity, 4), pad, pad)
+                },
+                installHelpBtn,
+            ),
+        )
 
         pairedSection = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        pairedSection.addView(grantBtn)
-        pairedSection.addView(permBox)
-        pairedSection.addView(bgCard)
-        pairedSection.addView(sectionTitle("SMS Gateway (for other apps/services)", pad, big = true))
-        pairedSection.addView(gwTitle)
-        pairedSection.addView(gwText)
-        pairedSection.addView(gwUserInput)
-        pairedSection.addView(gwCreateBtn)
-        pairedSection.addView(gwStatusBtn)
-        pairedSection.addView(simInput)
-        pairedSection.addView(simBtn)
-        pairedSection.addView(startBtn)
-        pairedSection.addView(stopBtn)
-        pairedSection.addView(sectionTitle("Danger zone", pad))
-        pairedSection.addView(unpairBtn)
+        pairedSection.addView(cardOf(null, grantBtn, permBox))
+        pairedSection.addView(spacer())
+        pairedSection.addView(cardOf("Background calls", bgCard))
+        pairedSection.addView(spacer())
+        pairedSection.addView(
+            cardOf(
+                "📡 SMS Gateway (for other apps/services)",
+                gwText,
+                gwUserInput,
+                gwCreateBtn,
+                gwStatusBtn,
+                simInput,
+                simBtn,
+                startBtn,
+                stopBtn,
+                infoCardBody,
+            ),
+        )
+        pairedSection.addView(spacer())
+        pairedSection.addView(cardOf("Danger zone", unpairBtn))
 
         val root = ScrollView(this).apply {
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
+                setPadding(0, 0, 0, Ui.dp(this@MainActivity, 24))
                 addView(statusText)
-                // 1.5.25 — sectioned layout: Setup first (the one-time path),
-                // Gateway credentials + controls second, diagnostics last.
-                // Two containers whose visibility refresh() flips, so the
-                // layout survives pairing state changes without a rebuild.
+                addView(statusSub)
+                addView(pillRow)
                 addView(setupSection)
                 addView(pairedSection)
                 addView(TextView(this@MainActivity).apply {
                     text = "Activity log"
                     textSize = 13f
-                    setTypeface(typeface, android.graphics.Typeface.BOLD)
-                    setPadding(pad, pad, pad, 4)
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(Ui.INK_DIM)
+                    setPadding(pad, pad, pad, Ui.dp(this@MainActivity, 4))
                 })
                 addView(logBox)
             })
         }
         setContentView(root)
+        // 1.5.26 — staggered entrance: header first, then each card slides
+        // up + fades in with a small delay. Skipped when the OS asks for
+        // reduced motion.
+        if (!reducedMotion()) {
+            val l = root.getChildAt(0) as LinearLayout
+            (0 until l.childCount).forEach { i -> Ui.animateIn(l.getChildAt(i), i) }
+        }
         refresh()
     }
 
+    private fun spacer(): View = View(this).apply {
+        layoutParams = LinearLayout.LayoutParams(1, Ui.dp(this@MainActivity, 12))
+    }
+
+    /** Honor the system "remove animations" accessibility setting. */
+    private fun reducedMotion(): Boolean = try {
+        android.provider.Settings.Global.getFloat(
+            contentResolver,
+            android.provider.Settings.Global.TRANSITION_ANIMATION_SCALE, 1f,
+        ) == 0f
+    } catch (_: Exception) { false }
+
     private fun renderPermRows() {
         permBox.removeAllViews()
-        val pad = (16 * resources.displayMetrics.density).toInt()
+        val pad = Ui.dp(this, 16)
         for (spec in permSpecs()) {
             val isGranted = granted(spec.perm)
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(pad, 2, pad, 2)
+                setPadding(pad, Ui.dp(this, 6), pad, Ui.dp(this, 6))
             }
+            // 1.5.26 — colored state mark: mint check, red cross, dim square.
             val mark = when {
                 isGranted -> "✔"
                 permanentDenied.contains(spec.perm) -> "✘"
                 else -> "□"
+            }
+            val markColor = when {
+                isGranted -> Ui.MINT
+                permanentDenied.contains(spec.perm) -> Ui.RED
+                else -> Ui.INK_DIM
             }
             val tv = TextView(this).apply {
                 text = "$mark ${spec.label}\n${spec.why}"
                 textSize = 12f
                 setPadding(0, 0, 8, 0)
             }
+            // color just the mark by using a two-spannable text
+            val span = android.text.SpannableString(tv.text)
+            span.setSpan(
+                android.text.style.ForegroundColorSpan(markColor),
+                0, 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+            tv.text = span
             row.addView(tv, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
 
             if (isGranted) {
-                val ok = TextView(this).apply { text = "granted" ; textSize = 12f }
+                val ok = TextView(this).apply {
+                    text = "granted"
+                    textSize = 12f
+                    setTextColor(Ui.MINT)
+                }
                 row.addView(ok)
             } else {
                 val b = if (permanentDenied.contains(spec.perm)) {
-                    button("Open settings") { openAppSettings() }
+                    Ui.button(this, "Open settings", primary = false) { openAppSettings() }
                 } else {
-                    button("Grant") {
+                    Ui.button(this, "Grant", primary = false) {
                         if (permRequestInFlight) { toast("A permission dialog is already open"); return@button }
                         permQueue = mutableListOf(spec.perm)
                         requestNextPerm()
@@ -628,24 +698,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun button(label: String, onClick: () -> Unit): Button =
-        Button(this).apply {
-            text = label
-            setPadding(16, 8, 16, 8)
-            setOnClickListener { onClick() }
-        }
-
     private fun log(line: String) {
         runOnUiThread {
             val t = TextView(this).apply {
                 text = line
                 textSize = 12f
+                setTextColor(Ui.INK_DIM)
                 setPadding(
-                    (16 * resources.displayMetrics.density).toInt(), 2,
-                    (16 * resources.displayMetrics.density).toInt(), 2,
+                    Ui.dp(this@MainActivity, 16), Ui.dp(this@MainActivity, 2),
+                    Ui.dp(this@MainActivity, 16), Ui.dp(this@MainActivity, 2),
                 )
             }
             logBox.addView(t, 0)
+            // 1.5.26 — new log entries slide in so the log feels live.
+            if (!reducedMotion()) Ui.slideInLog(t)
             if (logBox.childCount > 30) logBox.removeViewAt(logBox.childCount - 1)
         }
     }
@@ -843,25 +909,54 @@ class MainActivity : AppCompatActivity() {
         val vName = pkgInfo?.versionName ?: "?"
         val vCode = pkgInfo?.let { if (android.os.Build.VERSION.SDK_INT >= 28) it.longVersionCode else @Suppress("DEPRECATION") it.versionCode.toLong() } ?: -1L
 
-        val sb = StringBuilder()
-        sb.append("OpenCall SIM Gateway v$vName ($vCode)\n")
-        sb.append("package: $packageName\n\n")
-        sb.append("Paired: ${if (paired) "yes" else "no"}\n")
-        sb.append("Gateway service: ${if (svcRunning) "RUNNING" else "stopped"}\n")
-        sb.append("Permissions: $got/$total granted")
-        if (got < total) sb.append(" — tap 'Grant missing permissions'")
-        sb.append("\n")
-        sb.append("Call controls: ${if (CallControl.hasPermissions(this)) "OK" else "call perms missing"}\n")
-        sb.append("SIM number: ${DeviceStore.simNumber(this) ?: "not set"}\n")
-        if (paired) {
-            sb.append("Device: ${DeviceStore.deviceId(this)?.take(8)}…\n")
+        // 1.5.26 — header: app name + version, then the live status pill.
+        // The pill breathes (pulse animation) while the service runs.
+        statusSub.text = "v$vName · package $packageName"
+        val prevPillText = statusPill.text.toString()
+        val pillText = if (svcRunning) "●  RUNNING" else "○  stopped"
+        statusPill.text = pillText
+        statusPill.background = Ui.statusDot(this, svcRunning).background
+        statusPill.setTextColor(if (svcRunning) 0xFFB7F5DF.toInt() else 0xFFFCA5A5.toInt())
+        if (prevPillText != pillText) {
+            // state change: pop the pill so the transition is noticeable
+            if (!reducedMotion()) {
+                val pop = ScaleAnimation(
+                    0.9f, 1f, 0.9f, 1f,
+                    Animation.RELATIVE_TO_SELF, 0.5f,
+                    Animation.RELATIVE_TO_SELF, 0.5f,
+                ).apply { duration = 220 }
+                statusPill.startAnimation(pop)
+            }
+            if (svcRunning) Ui.pulse(statusPill) else Ui.stopPulse(statusPill)
+        } else if (svcRunning && statusPill.animation == null) {
+            Ui.pulse(statusPill)
         }
-        sb.append("\nWeb app: open the Devices tab → Create pairing code → type it here.\n")
-        statusText.text = sb.toString()
 
-        // 1.5.25 — whole-section visibility (replaces per-view toggles)
-        setupSection.visibility = if (paired) View.GONE else View.VISIBLE
-        pairedSection.visibility = if (paired) View.VISIBLE else View.GONE
+        // 1.5.26 — the old multi-line dump becomes a compact status card body.
+        val info = buildString {
+            append("Paired: ${if (paired) "yes" else "no"} · Permissions: $got/$total")
+            if (got < total) append(" — tap 'Grant missing permissions'")
+            append("\nCall controls: ${if (CallControl.hasPermissions(this@MainActivity)) "OK" else "call perms missing"}")
+            append("\nSIM number: ${DeviceStore.simNumber(this@MainActivity) ?: "not set"}")
+            if (paired) append("\nDevice: ${DeviceStore.deviceId(this@MainActivity)?.take(8)}…")
+        }
+
+        // 1.5.25 — whole-section visibility (replaces per-view toggles).
+        // 1.5.26 — cross-fade when the pairing state flips.
+        val targetSection = if (paired) pairedSection else setupSection
+        val hiddenSection = if (paired) setupSection else pairedSection
+        if (hiddenSection.visibility == View.VISIBLE && targetSection.visibility == View.GONE) {
+            // state is about to flip — animate it
+            if (reducedMotion()) {
+                hiddenSection.visibility = View.GONE
+                targetSection.visibility = View.VISIBLE
+            } else {
+                Ui.crossfade(targetSection, hiddenSection)
+            }
+        } else {
+            hiddenSection.visibility = View.GONE
+            targetSection.visibility = View.VISIBLE
+        }
         simInput.setText(DeviceStore.simNumber(this) ?: "")
         startBtn.isEnabled = paired && !svcRunning
         stopBtn.isEnabled = svcRunning
@@ -869,7 +964,6 @@ class MainActivity : AppCompatActivity() {
 
         // 1.5.17 — gateway card only makes sense once paired (1.5.21: clearer copy)
         val gwEnabled = paired && !DeviceStore.gatewayUsername(this).isNullOrBlank()
-        gwTitle.text = if (svcRunning) "📡 SMS Gateway — 🟢 service running" else "📡 SMS Gateway"
         gwText.text = if (!paired) {
             "1️⃣ Pair this phone first (type the 6-digit code below).\n2️⃣ Then create gateway credentials here."
         } else if (gwEnabled) {
@@ -881,6 +975,9 @@ class MainActivity : AppCompatActivity() {
         gwUserInput.visibility = if (paired) View.VISIBLE else View.GONE
         gwCreateBtn.isEnabled = paired
         gwStatusBtn.isEnabled = paired
+
+        // keep the compact info line at the bottom of the gateway card
+        infoCardBody.text = info
     }
 
     /**
