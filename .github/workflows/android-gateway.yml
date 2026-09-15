@@ -27,8 +27,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # 1.5.25 CI FIX: android-actions/setup-android@v3 started failing — it
+      # runs `sdkmanager tools`, a package removed from modern cmdline-tools
+      # (16.0). The ubuntu-latest runner already ships a complete Android SDK
+      # (ANDROID_HOME pre set), so we only need to accept the licenses.
+      - name: Accept Android SDK licenses
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          echo "ANDROID_HOME=$ANDROID_HOME"
 
       - name: Gradle wrapper
         run: |
