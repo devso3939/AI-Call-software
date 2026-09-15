@@ -648,7 +648,7 @@ class MainActivity : AppCompatActivity() {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(pad, Ui.dp(this, 6), pad, Ui.dp(this, 6))
+                setPadding(pad, Ui.dp(this@MainActivity, 6), pad, Ui.dp(this@MainActivity, 6))
             }
             // 1.5.26 — colored state mark: mint check, red cross, dim square.
             val mark = when {

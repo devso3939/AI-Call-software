@@ -187,7 +187,7 @@ class MainActivity : AppCompatActivity() {
     private fun cardOf(title: String, vararg views: View): LinearLayout {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Ui.card(this)
+            background = Ui.card(this@MainActivity)
             val t = Ui.dp(this@MainActivity, 6)
             setPadding(t, t, t, t)
         }
