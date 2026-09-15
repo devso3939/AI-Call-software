@@ -633,10 +633,6 @@ class GatewayService : Service() {
     } catch (_: Exception) {
         JSONObject().put("flavor", "gateway")
     }
-
-    private fun sleep(ms: Long) {
-        try { Thread.sleep(ms) } catch (_: InterruptedException) {}
-    }
 }
 
 /** Parsers for the command claim RPC result. */
