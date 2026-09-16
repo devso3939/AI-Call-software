@@ -375,6 +375,50 @@
 
     /* number badges on sidebar: pop when they appear */
     .sidebtn .badge{animation:modpop .3s var(--spring)}
+
+    /* ================================================================
+       1.5.28 navigation & connect-experience upgrades
+       ================================================================ */
+
+    /* sidebar: sliding active indicator + icon micro-bounce on hover */
+    .sidebtn .ico{transition:transform .18s var(--spring)}
+    .sidebtn:hover .ico{transform:scale(1.15)}
+    .sidebtn.on .ico{transform:scale(1.08)}
+    .sidebtn::after{content:'';position:absolute;left:12px;right:12px;bottom:4px;height:2px;border-radius:2px;
+      background:linear-gradient(90deg,var(--mint),var(--cyan));opacity:0;transform:scaleX(.3);
+      transition:opacity .2s,transform .25s var(--spring)}
+    .sidebtn.on::after{opacity:.85;transform:scaleX(1)}
+
+    /* page content: subtle fade+rise on tab switch (single wrapper) */
+    .pagebody{animation:pagein .26s var(--ease) both}
+    @keyframes pagein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+    /* health strip: live pulse on the connection dot */
+    .healthdot{width:9px;height:9px;border-radius:999px;flex-shrink:0;position:relative}
+    .healthdot.on{background:var(--mint400);box-shadow:0 0 8px rgba(52,211,153,.7)}
+    .healthdot.on::after{content:'';position:absolute;inset:-4px;border-radius:999px;
+      border:1px solid rgba(52,211,153,.5);animation:callhalo 2s ease-in-out infinite}
+    .healthdot.off{background:#f87171;box-shadow:0 0 8px rgba(248,113,113,.5)}
+    .healthdot.warn{background:#fbbf24;box-shadow:0 0 8px rgba(251,191,36,.5)}
+
+    /* step chips in the connect guide */
+    .stepchip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 11px;
+      font-size:.72rem;font-weight:700;background:rgba(16,185,129,.10);color:var(--mint400);
+      border:1px solid rgba(16,185,129,.28)}
+    .stepchip .n{width:16px;height:16px;border-radius:999px;background:var(--mint);color:#04110c;
+      display:inline-flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:800}
+
+    /* copy chips (username/password one-tap copy) */
+    .copychip{display:inline-flex;align-items:center;gap:8px;border:1px dashed rgba(148,163,184,.35);
+      border-radius:10px;padding:7px 12px;background:rgba(20,27,41,.7);cursor:pointer;
+      transition:border-color .15s,background .15s,transform .12s;font-family:inherit}
+    .copychip:hover{border-color:rgba(52,211,153,.5);background:rgba(23,31,48,.9)}
+    .copychip:active{transform:scale(.97)}
+    .copychip .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.82rem;color:#e5eaf3}
+
+    /* success flash when a test-connection call lands */
+    .testok{animation:testglow 1.2s var(--ease)}
+    @keyframes testglow{0%{box-shadow:0 0 0 0 rgba(52,211,153,.5)}100%{box-shadow:0 0 0 14px rgba(52,211,153,0)}}
   }
 </style>
 <link rel="manifest" href="manifest.webmanifest">
@@ -1383,6 +1427,44 @@ function copyText(txt, msg) {
     navigator.clipboard.writeText(txt).then(done, () => fallbackCopy(txt, done));
   } else fallbackCopy(txt, done);
 }
+
+/* 1.5.28 — one-tap "Test connection": calls the new READ-ONLY
+   gateway_api_test endpoint (migration 025). Safe by design: sends
+   nothing, changes nothing — it just proves the credentials + phone
+   bond are alive and shows the honest result. The health strip flashes
+   green on success. */
+async function testGwConnection(btn) {
+  if (!smsGw || !smsGw.username) return;
+  const label = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
+  try {
+    const { data, error } = await sb.rpc('gateway_api_test', {
+      p_username: smsGw.username, p_password: smsGw.password || null, p_token: null,
+    });
+    if (error) {
+      showToast('Connection test FAILED: ' + honestError(error), 'err');
+      const dot = document.getElementById('health-dot');
+      const lab = document.getElementById('health-label');
+      if (dot) dot.className = 'healthdot off';
+      if (lab) lab.textContent = 'Connection broken — check credentials';
+      return;
+    }
+    const dev = data && data.device ? data.device : {};
+    showToast(`Connection verified ✓ credentials valid · phone ${dev.online ? 'online' : 'offline (asleep — it will wake)'}`, 'ok');
+    const dot = document.getElementById('health-dot');
+    const lab = document.getElementById('health-label');
+    if (dot) { dot.className = 'healthdot ' + (dev.online ? 'on' : 'warn'); }
+    if (lab) lab.textContent = dev.online ? 'Connected · phone online' : 'Connected · phone offline';
+    const strip = dot && dot.parentElement;
+    if (strip && !reducedMotionPref()) { strip.classList.remove('testok'); void strip.offsetWidth; strip.classList.add('testok'); }
+    await refreshGwLog();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label || '⚡ Test connection'; }
+  }
+}
+function reducedMotionPref() {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+}
 /* SECURITY/UX FIX (1.5.25): the saved gateway password used to be rendered
    INTO the DOM as plain text and embedded in an inline onclick — anything
    that can read the page (a stray browser extension, a screen-share, a
@@ -2329,7 +2411,8 @@ function renderApp() {
             <a href="install.html#fix" class="btn btn-ghost tiny" style="text-decoration:none">Why can't Bridge auto-dial?</a>
           </div>
         </div>` : ''}
-        ${body}
+        <!-- 1.5.28: pagebody wrapper gives tab switches a consistent fade+rise -->
+        <div class="pagebody" key="${tab}">${body}</div>
       </main>
     </div>
     ${callBanner()}
@@ -2705,10 +2788,42 @@ function tabSmsGateway() {
   const boundOnline = on && smsGw.deviceOnline === true;
   const boundBattery = on && smsGw.deviceBattery != null ? `${smsGw.deviceBattery}%` : null;
   const boundSeen = on && smsGw.deviceLastSeenAt ? relTime(smsGw.deviceLastSeenAt) : null;
+  // 1.5.28 CONNECTION HEALTH — the user must SEE the bond is alive,
+  // not guess. tokenCount = permanent connections currently minted.
+  const tokenCount = on ? (smsGw.tokenCount ?? 0) : 0;
+  const healthDot = !on ? 'off' : boundOnline ? 'on' : 'warn';
+  const healthLabel = !on ? 'Gateway off'
+    : boundOnline ? 'Connected · phone online'
+    : 'Connected · phone offline';
+  const healthSub = !on ? 'Enable below to create credentials'
+    : `${tokenCount} permanent connection${tokenCount === 1 ? '' : 's'} · never expires${smsGw.lastTokenAt ? ` · last connect ${relTime(smsGw.lastTokenAt)}` : ''}${(smsGw.sent24h != null || smsGw.failed24h != null) ? ` · 24h: ${smsGw.sent24h ?? 0} sent / ${smsGw.failed24h ?? 0} failed` : ''}`;
   return `
   <div class="card">
     <h2>SMS Gateway ${on ? '<span class="pill sent">active</span>' : '<span class="pill queued">off</span>'}</h2>
     <p class="muted">Turn your Android phone into a <strong>cloud SMS gateway</strong> — like SMS Gate. Any third-party service (CRM, n8n, Zapier, your own backend) sends real SMS <em>from your SIM</em> by logging in with a <strong>username + password</strong> you create here. Requests arrive over the internet, your phone dials them out over the cellular network, and every request is logged below.</p>
+
+    <!-- 1.5.28 CONNECTION HEALTH STRIP — the bond made visible -->
+    <div style="display:flex;align-items:center;gap:12px;border:1px solid var(--ink700);border-radius:14px;
+      background:rgba(20,27,41,.6);padding:12px 14px;margin-top:12px;flex-wrap:wrap">
+      <span class="healthdot ${healthDot}" id="health-dot"></span>
+      <div style="flex:1;min-width:180px">
+        <strong style="font-size:.9rem" id="health-label">${healthLabel}</strong>
+        <div class="tiny" id="health-sub" style="margin-top:2px">${healthSub}</div>
+      </div>
+      ${on ? `<button class="btn btn-ghost tiny" onclick="testGwConnection(this)">⚡ Test connection</button>` : ''}
+    </div>
+
+    ${on ? `
+    <!-- 1.5.28 one-tap copy chips — the two values any service needs -->
+    <div class="row" style="gap:10px;margin-top:10px">
+      <div class="copychip" onclick="copyText('${jsArg(smsGw.username || '')}','Username copied')" title="Tap to copy">
+        <span class="tiny muted">username</span><span class="mono">${esc(smsGw.username || '')}</span><span class="tiny mint">⧉</span>
+      </div>
+      ${smsGw.password ? `<div class="copychip" onclick="copyGwPass()" title="Tap to copy">
+        <span class="tiny muted">password</span><span class="mono" id="chip-pass">••••••••</span><span class="tiny mint">⧉</span>
+      </div>` : ''}
+      <span class="stepchip"><span class="n">✓</span> permanent — never expires</span>
+    </div>` : ''}
 
     ${!on ? `
     ${devices.length === 0 ? `

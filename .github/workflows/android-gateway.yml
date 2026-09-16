@@ -99,12 +99,19 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.27 · versionCode 33). Two APKs:
+            build (v1.5.28 · versionCode 34). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.28 highlights — connection you can SEE + easier connecting
+            - New "⚡ Test connection" on the phone and on the web SMS Gateway tab: one tap proves your credentials still work — read-only, sends nothing, changes nothing
+            - Connection Health strip on the web: live green/amber/red dot showing "Connected · phone online" vs "Connected · phone offline (asleep — nothing is broken)" vs broken, plus how many permanent connections exist and 24h sent/failed counts
+            - One-tap copy chips: tap the username chip, tap the password chip, paste into SmartBookly — connecting is now two taps
+            - "✓ permanent — never expires" badge makes the 1.5.27 guarantee visible right where you connect
+            - Android: navigation icons bounce, every screen/tab switch animates in with a consistent fade+rise, and the connection test explains honestly when the phone is just asleep
 
             ### v1.5.27 highlights — permanent gateway connection
             - Server: login tokens no longer expire (`expiresIn: "never"`) — connect once, stays connected until you stop it

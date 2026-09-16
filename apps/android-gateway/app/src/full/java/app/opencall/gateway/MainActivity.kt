@@ -79,6 +79,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var gwCreateBtn: Button
     private lateinit var gwRotateBtn: Button
     private lateinit var gwStatusBtn: Button
+    private lateinit var gwTestBtn: Button
 
     // 1.5.26 — compact device status body (paired/permissions/SIM/device id).
     private lateinit var infoCardBody: TextView
@@ -507,6 +508,10 @@ class MainActivity : AppCompatActivity() {
         // (server 024 KEEP mode: re-running it just re-verifies + re-binds).
         gwRotateBtn = Ui.button(this, "🔄 Rotate password (breaks current)", primary = false, danger = true) { doGatewaySetup(rotate = true) }
         gwStatusBtn = Ui.button(this, "📋 Show my credentials", primary = false) { doGatewayStatus() }
+        // 1.5.28 — one-tap proof that the bond is alive: read-only server
+        // check that the credentials still authenticate (sends nothing,
+        // rotates nothing). Offline phone ≠ broken connection.
+        gwTestBtn = Ui.button(this, "⚡ Test connection", primary = false) { doGatewayTest() }
 
         codeInput = Ui.input(this, "6-digit pairing code (from Devices tab)", android.text.InputType.TYPE_CLASS_NUMBER)
         pairBtn = Ui.button(this, "Pair this phone", primary = true) { doPair() }
@@ -594,6 +599,7 @@ class MainActivity : AppCompatActivity() {
                 gwCreateBtn,
                 gwRotateBtn,
                 gwStatusBtn,
+                gwTestBtn,
                 simInput,
                 simBtn,
                 startBtn,
@@ -942,6 +948,65 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    /**
+     * 1.5.28 — one-tap "is my connection still good?" check.
+     * Calls the read-only gateway_api_test RPC (migration 025): it
+     * authenticates exactly like a real send would, but delivers nothing.
+     *  • ok=true + device.online=true  → credentials valid, phone reachable.
+     *  • ok=true + device.online=false → credentials VALID, phone asleep —
+     *    nothing is broken; the connection self-heals on the next heartbeat.
+     *  • error → the credentials themselves no longer authenticate.
+     */
+    private fun doGatewayTest() {
+        if (!DeviceStore.isPaired(this)) { toast("Pair first"); return }
+        val user = DeviceStore.gatewayUsername(this)
+        if (user.isNullOrBlank()) { toast("Create gateway credentials first"); return }
+        gwTestBtn.isEnabled = false
+        Thread {
+            try {
+                val res = Rpc.rpc(
+                    "gateway_api_test",
+                    JSONObject()
+                        .put("p_username", user)
+                        .put("p_password", DeviceStore.gatewayPassword(this) ?: JSONObject.NULL)
+                        .put("p_token", JSONObject.NULL),
+                ) ?: throw Exception("empty response")
+                val dev = res.optJSONObject("device") ?: JSONObject()
+                val usage = res.optJSONObject("usage") ?: JSONObject()
+                val online = dev.optBoolean("online")
+                val batt = if (dev.isNull("battery")) null else dev.optInt("battery")
+                val lastSeen = dev.optString("lastSeenAt", "")
+                val sent = usage.optLong("sent", 0)
+                val failed = usage.optLong("failed", 0)
+                val msg = "✅ Connection verified — credentials are valid and permanent.\n\n" +
+                    "Phone: ${if (online) "🟢 online" else "🟡 offline (asleep — the connection self-heals on the next heartbeat; nothing is broken)"}" +
+                    (if (batt != null) " · battery $batt%" else "") + "\n" +
+                    (if (lastSeen.isNotBlank()) "Last seen: $lastSeen\n" else "") +
+                    "Lifetime: $sent sent · $failed failed\n\n" +
+                    "Nothing was sent and nothing was changed — this was a read-only check."
+                log("connection test: ok · phone ${if (online) "online" else "offline"}")
+                runOnUiThread {
+                    AlertDialog.Builder(this)
+                        .setTitle("⚡ Connection test")
+                        .setMessage(msg)
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            } catch (e: Exception) {
+                log("connection test: FAILED — ${e.message}")
+                runOnUiThread {
+                    AlertDialog.Builder(this)
+                        .setTitle("❌ Connection test failed")
+                        .setMessage("The credentials no longer authenticate.\n\n${e.message}\n\nIf the password was rotated elsewhere, re-create the credentials here (KEEP mode keeps the username and re-binds the device).")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            } finally {
+                runOnUiThread { gwTestBtn.isEnabled = true }
+            }
+        }.start()
+    }
+
     private fun refresh() {
         renderPermRows()
         renderBackgroundCard()
@@ -1021,7 +1086,8 @@ class MainActivity : AppCompatActivity() {
             "1️⃣ Pair this phone first (type the 6-digit code below).\n2️⃣ Then create gateway credentials here."
         } else if (gwEnabled) {
             "✅ Gateway ON — username: ${DeviceStore.gatewayUsername(this)}\n" +
-                "Tap \"📋 Show my credentials\" to see the username + password to paste into SmartBookly."
+                "Tap \"📋 Show my credentials\" to see the username + password to paste into SmartBookly.\n" +
+                "Not sure it still works? \"⚡ Test connection\" proves it in one tap — without sending anything."
         } else {
             "Create a username here → we generate a strong password → paste both into the service that will send SMS (e.g. SmartBookly)."
         }
@@ -1029,6 +1095,7 @@ class MainActivity : AppCompatActivity() {
         gwCreateBtn.isEnabled = paired
         gwRotateBtn.isEnabled = paired && gwEnabled // rotate only makes sense with existing creds
         gwStatusBtn.isEnabled = paired
+        gwTestBtn.isEnabled = paired && gwEnabled // 1.5.28 — test only makes sense with creds
 
         // keep the compact info line at the bottom of the gateway card
         infoCardBody.text = info

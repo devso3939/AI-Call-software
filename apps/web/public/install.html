@@ -83,7 +83,7 @@
     <h2>Install OpenCall on Android</h2>
     <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.27 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.28 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
       <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
@@ -114,6 +114,10 @@
   </div>
 
   <div class="sec">
+    <h3>🟢 What's new in v1.5.28</h3>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.28 — a connection you can SEE, and connecting made effortless:</strong> the SMS Gateway tab now shows a live <strong>Connection Health strip</strong> — a green pulsing dot when your phone is online, amber when it's just asleep ("nothing is broken — it self-heals"), red only when credentials are actually wrong — plus how many permanent connections exist and your 24h sent/failed counts. A new <strong>"⚡ Test connection"</strong> button (on the web AND on the phone) proves your credentials still work in one tap — read-only, sends nothing, changes nothing. Connecting to a service is now <strong>two taps</strong>: tap the username chip to copy it, tap the password chip to copy it, paste into SmartBookly. A "✓ permanent — never expires" badge sits right where you connect, and the whole app got navigation polish: icons bounce, every tab switch animates in with a smooth fade+rise.</p>
+    </div>
     <h3>🟢 What's new in v1.5.27</h3>
     <div class="ok" style="margin-bottom:10px">
       <p><strong>v1.5.27 — your gateway connection is now permanent:</strong> once you create gateway credentials and connect a service (like SmartBookly), the connection <strong>stays alive until YOU stop it</strong> — no more silent expiry, no more being forced to reconnect. Login tokens no longer expire, and re-tapping "Create / reconnect" on the phone (or saving the SMS Gateway tab on the web) simply <strong>verifies and keeps your existing credentials</strong> — it shows "Connection verified — nothing changed" instead of breaking anything. A new password is only generated when you explicitly tap the new <em>"🔄 Rotate password"</em> button (with a clear warning that connected services must be updated). If a send fails while your phone is offline, the error now honestly says your credentials are valid and to just open the app — no re-pairing needed.</p>
