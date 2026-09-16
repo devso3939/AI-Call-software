@@ -1304,14 +1304,35 @@ async function setupSmsGw(e) {
     return setError('Username: 3–40 chars — lowercase letters, digits, dot, dash, underscore.');
   if (gwPassword && gwPassword.length < 8)
     return setError('Password must be at least 8 characters (or leave empty to auto-generate a strong one).');
+  /* 1.5.27 PERSISTENT CONNECTION (server 024): if an enabled gateway
+     already exists, saving with the SAME username + no new password is a
+     KEEP (reconnect) — credentials stay untouched. A password typed into
+     the field signals "I want to change it" → explicit rotate (and tokens
+     are purged server-side on purpose). */
+  const existsForMe = !!(smsGw && smsGw.enabled && smsGw.username);
+  const rotate = existsForMe && (uname !== smsGw.username || !!gwPassword);
+  if (rotate && !(await appConfirm(
+    existsForMe && uname !== smsGw.username
+      ? `Replace the current gateway username "${smsGw.username}" with "${uname}"? The old credentials stop working and connected services must be updated.`
+      : 'Generate a NEW password? The current one stops working and connected services (e.g. SmartBookly) must be updated with the new password.',
+    existsForMe && uname !== smsGw.username ? 'Replace credentials' : 'Rotate password'))) return;
   await busy(e && e.currentTarget, async () => {
     const { data, error } = await sb.rpc('setup_sms_gateway', {
       p_device_id: devId, p_username: uname, p_password: gwPassword || null, p_any_device: gwAnyDevice,
+      p_rotate: rotate,
     });
     if (error) return setError(honestError(error));
-    freshGwPassword = data;                   // plaintext password shown exactly once
-    gwPassword = '';
-    showToast('SMS Gateway enabled — copy the password now, it is shown only once');
+    if (data && data.reused) {
+      // KEEP mode: nothing changed — say so instead of showing a fake
+      // one-time password.
+      freshGwPassword = null;
+      gwPassword = '';
+      showToast('Connection verified — your credentials were kept exactly as they are. No need to reconnect anything.');
+    } else {
+      freshGwPassword = data;                 // plaintext password shown exactly once
+      gwPassword = '';
+      showToast('SMS Gateway enabled — copy the password now, it is shown only once');
+    }
     await refreshSmsGw();
     await refreshGwLog();
   }, 'Saving');
@@ -1337,7 +1358,7 @@ function gwExample(kind) {
   -H 'apikey: ${ANON}' \\
   -H 'Content-Type: application/json' \\
   -d '{"p_username":"${U}","p_password":"${P}"}'
-# → {"token":"ogt_…","expiresAt":"2026-…"} — valid 24 h, cache it`;
+# → {"token":"ogt_…","expiresIn":"never"} — token does NOT expire; cache it forever (until you rotate the password)`;
   if (kind === 'send') return `curl -X POST '${B}/gateway_api_send_sms' \\
   -H 'apikey: ${ANON}' \\
   -H 'Content-Type: application/json' \\

@@ -77,6 +77,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var gwText: TextView
     private lateinit var gwUserInput: EditText
     private lateinit var gwCreateBtn: Button
+    private lateinit var gwRotateBtn: Button
     private lateinit var gwStatusBtn: Button
 
     // 1.5.26 — compact device status body (paired/permissions/SIM/device id).
@@ -501,6 +502,10 @@ class MainActivity : AppCompatActivity() {
         }
         gwUserInput = Ui.input(this, "Choose a username (e.g. smartbookly)", android.text.InputType.TYPE_CLASS_TEXT)
         gwCreateBtn = Ui.button(this, "⚡ Create gateway credentials", primary = true) { doGatewaySetup() }
+        // 1.5.27 — rotation is now a separate, explicit, confirmed action.
+        // The create button itself NEVER breaks an existing connection
+        // (server 024 KEEP mode: re-running it just re-verifies + re-binds).
+        gwRotateBtn = Ui.button(this, "🔄 Rotate password (breaks current)", primary = false, danger = true) { doGatewaySetup(rotate = true) }
         gwStatusBtn = Ui.button(this, "📋 Show my credentials", primary = false) { doGatewayStatus() }
 
         codeInput = Ui.input(this, "6-digit pairing code (from Devices tab)", android.text.InputType.TYPE_CLASS_NUMBER)
@@ -587,6 +592,7 @@ class MainActivity : AppCompatActivity() {
                 gwText,
                 gwUserInput,
                 gwCreateBtn,
+                gwRotateBtn,
                 gwStatusBtn,
                 simInput,
                 simBtn,
@@ -796,14 +802,39 @@ class MainActivity : AppCompatActivity() {
      * auto-generated password) for this phone's owner, authenticated with
      * the device pairing secret. The password is shown ONCE in a dialog
      * and stored encrypted on this phone so it can be re-shown.
+     *
+     * 1.5.27 PERSISTENT CONNECTION (server migration 024): setup now
+     * defaults to KEEP mode — if credentials already exist, the server
+     * keeps them (reused=true, password=null) and only re-binds this
+     * phone. Rotation requires p_rotate=true, which we send ONLY from an
+     * explicit "Rotate password" action. So re-opening this screen /
+     * re-pairing the phone can never break the SmartBookly connection.
      */
-    private fun doGatewaySetup() {
+    private fun doGatewaySetup(rotate: Boolean = false) {
         if (!DeviceStore.isPaired(this)) { toast("Pair first"); return }
         val user = gwUserInput.text.toString().trim()
         if (!user.matches(Regex("^[a-z0-9][a-z0-9._-]{2,39}$"))) {
             toast("Username: 3-40 chars, lowercase letters/digits/dot/dash/underscore"); return
         }
+        if (rotate) {
+            // rotation is destructive (existing password dies) — confirm first
+            AlertDialog.Builder(this)
+                .setTitle("Rotate gateway password?")
+                .setMessage(
+                    "A NEW password will be generated and the current one will STOP working.\n\n" +
+                    "Every connected service (e.g. SmartBookly) must be updated with the new password."
+                )
+                .setPositiveButton("Rotate") { _, _ -> doGatewaySetupRpc(rotate = true, user = user) }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        }
+        doGatewaySetupRpc(rotate = false, user = user)
+    }
+
+    private fun doGatewaySetupRpc(rotate: Boolean, user: String) {
         gwCreateBtn.isEnabled = false
+        gwRotateBtn.isEnabled = false
         Thread {
             try {
                 val res = Rpc.rpc(
@@ -811,30 +842,52 @@ class MainActivity : AppCompatActivity() {
                     JSONObject()
                         .put("p_device_id", DeviceStore.deviceId(this))
                         .put("p_device_secret", DeviceStore.secret(this))
-                        .put("p_username", user),
+                        .put("p_username", user)
+                        // 024: default (false) = keep existing credentials;
+                        // true only from the explicit Rotate action
+                        .put("p_rotate", rotate),
                 ) ?: throw Exception("empty response")
-                val pw = res.optString("password")
-                DeviceStore.saveGatewayCreds(this, res.optString("username"), pw)
-                log("✔ gateway credentials created: ${res.optString("username")}")
+                val reused = res.optBoolean("reused", false)
+                val pw = if (reused) null else res.optString("password").takeIf { it.isNotBlank() }
+                if (!reused && pw != null) {
+                    // only persist a NEW password — KEEP mode must not
+                    // overwrite the locally stored working credentials
+                    DeviceStore.saveGatewayCreds(this, res.optString("username"), pw)
+                }
+                log(if (reused) "✔ gateway connection verified — existing credentials kept: ${res.optString("username")}"
+                    else "✔ gateway credentials ${if (rotate) "rotated" else "created"}: ${res.optString("username")}")
                 runOnUiThread {
-                    AlertDialog.Builder(this)
-                        .setTitle("Gateway credentials ready")
-                        .setMessage(
-                            "Username: ${res.optString("username")}\n" +
-                            "Password: $pw\n\n" +
-                            "⚠ Copy the password NOW — enter this username + " +
-                            "password in the app/service that will send SMS " +
-                            "(e.g. SmartBookly)."
-                        )
-                        .setPositiveButton("Done", null)
-                        .show()
+                    if (reused) {
+                        AlertDialog.Builder(this)
+                            .setTitle("Connection verified — nothing changed")
+                            .setMessage(
+                                "Your gateway credentials are ACTIVE and were kept exactly as they are.\n\n" +
+                                "Username: ${res.optString("username")}\n" +
+                                "(password unchanged — check \"Gateway status\" to view it)\n\n" +
+                                "No need to reconnect SmartBookly — the connection stays until you stop it."
+                            )
+                            .setPositiveButton("Done", null)
+                            .show()
+                    } else {
+                        AlertDialog.Builder(this)
+                            .setTitle(if (rotate) "Gateway password rotated" else "Gateway credentials ready")
+                            .setMessage(
+                                "Username: ${res.optString("username")}\n" +
+                                "Password: $pw\n\n" +
+                                "⚠ Copy the password NOW — enter this username + " +
+                                "password in the app/service that will send SMS " +
+                                "(e.g. SmartBookly)."
+                            )
+                            .setPositiveButton("Done", null)
+                            .show()
+                    }
                     refresh()
                 }
             } catch (e: Exception) {
                 // 1.5.18: dialog instead of toast so the real error is visible
                 errorDialog("Gateway setup failed", e)
             } finally {
-                runOnUiThread { gwCreateBtn.isEnabled = true }
+                runOnUiThread { gwCreateBtn.isEnabled = true; gwRotateBtn.isEnabled = true }
             }
         }.start()
     }
@@ -974,6 +1027,7 @@ class MainActivity : AppCompatActivity() {
         }
         gwUserInput.visibility = if (paired) View.VISIBLE else View.GONE
         gwCreateBtn.isEnabled = paired
+        gwRotateBtn.isEnabled = paired && gwEnabled // rotate only makes sense with existing creds
         gwStatusBtn.isEnabled = paired
 
         // keep the compact info line at the bottom of the gateway card

@@ -99,12 +99,19 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.26 · versionCode 32). Two APKs:
+            build (v1.5.27 · versionCode 33). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.27 highlights — permanent gateway connection
+            - Server: login tokens no longer expire (`expiresIn: "never"`) — connect once, stays connected until you stop it
+            - Reconnect = verify, never break: "Create / reconnect" on the phone and saving the web SMS Gateway tab now KEEP existing credentials (shows "Connection verified — nothing changed") and just refresh the device binding
+            - Rotation is explicit: new "🔄 Rotate password" button (with confirmation warning) is the only way a password changes; the old auto-rotate-on-setup is gone
+            - Offline sends fail honestly: "credentials are VALID, do not reconnect — open the app and retry when the phone heartbeats"
+            - Web: reconnect confirmation only appears when you actually change the username or enter a new password
 
             ### v1.5.26 highlights — a real design system, everywhere
             - Web: spring-eased card entrances, shimmering skeleton loader, tinted toasts (success/error/warning), springy confirm dialog, halo glow on primary buttons — all respecting the system "reduce motion" setting
