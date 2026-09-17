@@ -99,12 +99,21 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.28 · versionCode 34). Two APKs:
+            build (v1.5.29 · versionCode 35). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.29 highlights — the app now LOOKS like the web app
+            - Full redesign of both APKs using the web app's exact design language: deep-navy canvas with soft mint/cyan/violet radial glows, translucent 18dp cards with hairline strokes
+            - Mint→cyan gradient primary buttons with a glow shadow, outlined ghost buttons, soft danger buttons — every button presses down and springs back with overshoot (the web's spring curve)
+            - Hero header: gradient logo tile + product name + live status pill, on both flavors
+            - One-tap copy chips for gateway username/password right in the app: tap → clipboard → confirmation toast; a "✓ permanent — never expires" badge sits beside them
+            - Pairing flow is now three numbered step chips instead of a dense paragraph — connecting to the web app takes one glance
+            - Tinted toasts (mint success / red error) with a glowing edge, staggered card entrance animations, sliding log lines — all respecting the system "remove animations" setting
+            - Inputs get a mint focus ring, matching the web .input:focus
 
             ### v1.5.28 highlights — connection you can SEE + easier connecting
             - New "⚡ Test connection" on the phone and on the web SMS Gateway tab: one tap proves your credentials still work — read-only, sends nothing, changes nothing

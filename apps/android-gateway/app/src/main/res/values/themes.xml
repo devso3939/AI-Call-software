@@ -1,6 +1,13 @@
 <resources>
+  <!-- 1.5.29 — matches the web app canvas: deep navy #070b14 with soft
+       mint/cyan radial glows (painted in Ui.kt over the window background).
+       No action bar; translucent system bars let the canvas extend
+       edge-to-edge on modern Androids. -->
   <style name="Theme.OpenCall" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-    <item name="android:statusBarColor">#0b1220</item>
-    <item name="android:windowBackground">#0b1220</item>
+    <item name="android:statusBarColor">#070b14</item>
+    <item name="android:navigationBarColor">#070b14</item>
+    <item name="android:windowLightStatusBar">false</item>
+    <item name="android:windowBackground">#070b14</item>
+    <item name="android:colorAccent">#34d399</item>
   </style>
 </resources>
