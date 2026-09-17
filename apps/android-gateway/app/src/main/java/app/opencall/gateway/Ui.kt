@@ -68,25 +68,31 @@ object Ui {
      * from the web app's body, ported as a LayerDrawable of radials).
      */
     fun canvas(c: Context): android.graphics.drawable.Drawable {
-        val w = c.resources.displayMetrics.widthPixels
-        fun radial(size: Int, color: Int): GradientDrawable = GradientDrawable(
-            GradientDrawable.Orientation.TL_BR, intArrayOf(color, 0x00000000),
-        ).apply {
-            shape = GradientDrawable.RADIAL
-            gradientRadius = dp(c, size).toFloat()
+        // radial glow = OVAL shape + RADIAL_GRADIENT type (GradientDrawable
+        // has no "RADIAL" shape constant — the gradient TYPE carries it).
+        fun glow(sizeDp: Int, color: Int): GradientDrawable = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setGradientType(GradientDrawable.RADIAL_GRADIENT)
             setColors(intArrayOf(color, 0x00000000))
+            gradientRadius = dp(c, sizeDp).toFloat()
         }
-        val mintGlow = radial(dp(c, 420), 0x2410B981.toInt()) // rgba(16,185,129,.14)
-        val cyanGlow = radial(dp(c, 420), 0x1A22D3EE.toInt()) // rgba(34,211,238,.10)
-        val violetGlow = radial(dp(c, 380), 0x14A78BFA.toInt()) // rgba(167,139,250,.08)
+        val mintGlow = glow(420, 0x2410B981.toInt())   // rgba(16,185,129,.14)
+        val cyanGlow = glow(420, 0x1A22D3EE.toInt())   // rgba(34,211,238,.10)
+        val violetGlow = glow(380, 0x14A78BFA.toInt()) // rgba(167,139,250,.08)
         return LayerDrawable(arrayOf(mintGlow, cyanGlow, violetGlow)).apply {
             setId(0, 1); setId(1, 2); setId(2, 3)
-            // mint glow: top-left
-            setLayerInset(0, -dp(c, 90), -dp(c, 160), dp(c, w) - dp(c, 240), dp(c, 300))
-            // cyan glow: top-right
-            setLayerInset(1, dp(c, w) - dp(c, 240), -dp(c, 160), -dp(c, 90), dp(c, 300))
-            // violet glow: bottom-center
-            setLayerInset(2, dp(c, 40), dp(c, 900), dp(c, 40), -dp(c, 60))
+            // mint glow: bleeding off the top-left corner
+            setLayerSize(0, dp(c, 420), dp(c, 420))
+            setLayerGravity(0, Gravity.TOP or Gravity.START)
+            setLayerInsetRelative(0, -dp(c, 120), -dp(c, 180), 0, 0)
+            // cyan glow: bleeding off the top-right corner
+            setLayerSize(1, dp(c, 420), dp(c, 420))
+            setLayerGravity(1, Gravity.TOP or Gravity.END)
+            setLayerInsetRelative(1, 0, -dp(c, 180), -dp(c, 120), 0)
+            // violet glow: soft, low center
+            setLayerSize(2, dp(c, 380), dp(c, 380))
+            setLayerGravity(2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+            setLayerInsetRelative(2, 0, dp(c, 160), 0, -dp(c, 120))
         }
     }
 
@@ -261,10 +267,10 @@ object Ui {
     }
 
     /** Web-style step chip: "✓ permanent — never expires" etc. */
-    fun chip(c: Context, text: String, mark: String = "✓"): TextView = TextView(c).apply {
+    fun chip(c: Context, label: String, mark: String = "✓"): TextView = TextView(c).apply {
         textSize = 11.5f
         setTypeface(typeface, Typeface.BOLD)
-        text = "$mark  $text"
+        text = "$mark  $label"
         setPadding(dp(c, 12), dp(c, 6), dp(c, 12), dp(c, 6))
         background = pill(
             c,
