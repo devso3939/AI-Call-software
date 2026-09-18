@@ -229,7 +229,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+    // v1.5.32 FIX (audit #1): toast() from the pairing background thread
+    // crashed with "Can't create handler inside thread that has not called
+    // Looper.prepare()" — any pairing failure killed the BRIDGE app.
+    private fun toast(msg: String) = runOnUiThread {
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+    }
 
     // ============ actions ============
 
@@ -289,7 +294,15 @@ class MainActivity : AppCompatActivity() {
             ).apply { duration = 220 }
             statusPill.startAnimation(pop)
         }
-        if (svcRunning) Ui.pulse(statusPill) else Ui.stopPulse(statusPill)
+        // v1.5.32 FIX (audit #8): pulse was restarted on EVERY refresh() —
+        // each call created a fresh infinite ScaleAnimation, which the
+        // user saw as unstoppable flickering. Pulse only on state change,
+        // and keep the existing animation otherwise.
+        if (prevPillText != pillText) {
+            if (svcRunning) Ui.pulse(statusPill) else Ui.stopPulse(statusPill)
+        } else if (svcRunning && statusPill.animation == null) {
+            Ui.pulse(statusPill)
+        }
 
         // compact status body (was the old multi-line dump)
         val sim = DeviceStore.simNumber(this)
@@ -302,7 +315,10 @@ class MainActivity : AppCompatActivity() {
 
         codeInput.visibility = if (paired) View.GONE else View.VISIBLE
         pairBtn.visibility = if (paired) View.GONE else View.VISIBLE
-        simInput.setText(sim ?: "")
+        // v1.5.32 FIX (audit #11): only overwrite the SIM field when its
+        // content actually differs — re-setting the same text on every
+        // refresh() used to move the cursor and fight the user typing.
+        if (simInput.text.toString() != (sim ?: "")) simInput.setText(sim ?: "")
         simInput.hint = if (paired) "Your SIM number (e.g. +995599123456)" else "Pair first, then set your SIM number"
         simBtn.isEnabled = paired
         startBtn.isEnabled = paired && !svcRunning

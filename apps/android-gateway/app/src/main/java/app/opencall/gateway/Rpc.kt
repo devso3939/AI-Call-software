@@ -32,6 +32,10 @@ object Rpc {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(35, TimeUnit.SECONDS)   // long-poll friendly
         .writeTimeout(15, TimeUnit.SECONDS)
+        // v1.5.32 FIX (audit #12): a stalled connection (no data at all)
+        // used to hang forever — readTimeout only counts between bytes.
+        // callTimeout bounds the WHOLE call so buttons never stay disabled.
+        .callTimeout(45, TimeUnit.SECONDS)
         .build()
 
     /**

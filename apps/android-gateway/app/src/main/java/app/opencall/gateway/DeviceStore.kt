@@ -25,17 +25,55 @@ object DeviceStore {
         cachedPrefs?.let { return it }
         synchronized(this) {
             cachedPrefs?.let { return it }
-            val masterKey = MasterKey.Builder(ctx.applicationContext)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            val p = EncryptedSharedPreferences.create(
-                ctx.applicationContext, FILE, masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-            )
-            cachedPrefs = p
-            return p
+            cachedPrefs = openPrefs(ctx)
+            return cachedPrefs!!
         }
+    }
+
+    /**
+     * v1.5.32 FIX (audit #3): EncryptedSharedPreferences throws
+     * (AEADBadTagException / SecurityException / IllegalStateException)
+     * when the Android keystore master key becomes unreadable — backup
+     * restore, OEM phone-clone, or system update can corrupt it. That
+     * crashed the app at EVERY launch with no recovery path. Recovery:
+     * wipe the corrupted store and start fresh (the user re-pairs — a
+     * one-time 6-digit code — instead of being locked out forever).
+     */
+    private fun openPrefs(ctx: Context): SharedPreferences {
+        val appCtx = ctx.applicationContext
+        try {
+            return createEncryptedPrefs(appCtx)
+        } catch (first: Exception) {
+            // wipe + one retry
+            try {
+                appCtx.deleteSharedPreferences(FILE)
+            } catch (_: Exception) {
+                // API < 24 fallback: delete the underlying files directly
+                val prefsDir = java.io.File(appCtx.applicationInfo.dataDir, "shared_prefs")
+                listOf("$FILE.xml").forEach { name ->
+                    try { java.io.File(prefsDir, name).delete() } catch (_: Exception) {}
+                }
+            }
+            try {
+                return createEncryptedPrefs(appCtx)
+            } catch (second: Exception) {
+                // last resort: plain (unencrypted) prefs so the app still
+                // launches; better degraded security than a crash loop
+                android.util.Log.e("DeviceStore", "encrypted prefs unrecoverable, falling back to plain prefs", second)
+                return appCtx.getSharedPreferences("${FILE}_plain", Context.MODE_PRIVATE)
+            }
+        }
+    }
+
+    private fun createEncryptedPrefs(appCtx: Context): SharedPreferences {
+        val masterKey = MasterKey.Builder(appCtx)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        return EncryptedSharedPreferences.create(
+            appCtx, FILE, masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
     }
 
     fun deviceId(ctx: Context): String? = prefs(ctx).getString("deviceId", null)

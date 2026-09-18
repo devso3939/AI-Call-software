@@ -95,9 +95,23 @@ class MainActivity : AppCompatActivity() {
     private val permanentDenied = mutableSetOf<String>()
     private var permQueue: MutableList<String> = mutableListOf()
     private var permRequestInFlight = false
+    // v1.5.32 FIX (audit #5/#6/#7): the grant flow used to re-fire on EVERY
+    // onResume while any critical permission was missing — after a denial
+    // the permission dialog popped straight back up, endlessly (the
+    // "popup that won't close"), and on first launch it fired underneath
+    // the explainer dialog. The flow now runs at most once per session
+    // (the flag survives rotation via instance state); permission rows
+    // stay tappable for manual retries.
+    private var grantFlowDoneThisSession = false
+    private var explainerUp = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // v1.5.32 FIX (audit #7): survive rotation — if the grant flow
+        // already ran this session, don't restart it after recreation.
+        if (savedInstanceState != null) {
+            grantFlowDoneThisSession = savedInstanceState.getBoolean("grantFlowDone", false)
+        }
         // 1.5.26 — deep navy canvas behind everything (matches the web app).
         window.setBackgroundDrawableResource(android.R.color.transparent)
         window.decorView.setBackgroundColor(Ui.BG)
@@ -111,6 +125,7 @@ class MainActivity : AppCompatActivity() {
             startGrantFlow()
         } else {
             p.edit().putBoolean("permExplainerShown", true).apply()
+            explainerUp = true
             AlertDialog.Builder(this)
                 .setTitle("Why these permissions?")
                 .setMessage(
@@ -121,8 +136,12 @@ class MainActivity : AppCompatActivity() {
                         "Permissions are requested ONE at a time (some phones auto-deny batched dialogs). " +
                         "Nothing leaves your gateway except your own traffic."
                 )
-                .setPositiveButton("Continue") { _, _ -> startGrantFlow() }
-                .setNegativeButton("Later", null)
+                .setPositiveButton("Continue") { _, _ ->
+                    explainerUp = false
+                    startGrantFlow()
+                }
+                .setNegativeButton("Later") { _, _ -> explainerUp = false }
+                .setOnDismissListener { explainerUp = false }
                 .show()
         }
     }
@@ -143,9 +162,21 @@ class MainActivity : AppCompatActivity() {
         // app was freshly opened straight into that screen, ensure the
         // sequential dialogs fire — startGrantFlow() is idempotent when
         // everything is already granted.
-        if (permQueue.isEmpty() && !permRequestInFlight && missingCriticalPerms().isNotEmpty()) {
+        // v1.5.32 FIX (audit #5/#6/#7): only auto-start ONCE per session,
+        // never while the explainer is up, never while a request is in
+        // flight. This is what stopped the "popup that won't close".
+        if (!grantFlowDoneThisSession && !explainerUp &&
+            permQueue.isEmpty() && !permRequestInFlight &&
+            missingCriticalPerms().isNotEmpty()
+        ) {
             startGrantFlow()
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // v1.5.32 FIX (audit #7): keep the grant-flow-once flag across rotation
+        outState.putBoolean("grantFlowDone", grantFlowDoneThisSession)
     }
 
     // ============ permission center ============
@@ -188,6 +219,7 @@ class MainActivity : AppCompatActivity() {
         permQueue = permSpecs().map { it.perm }.filter { !granted(it) }.toMutableList()
         if (permQueue.isEmpty()) {
             log("✔ all permissions already granted")
+            grantFlowDoneThisSession = true
             refresh()
             return
         }
@@ -199,6 +231,7 @@ class MainActivity : AppCompatActivity() {
         val next = permQueue.firstOrNull()
         if (next == null) {
             permRequestInFlight = false
+            grantFlowDoneThisSession = true // v1.5.32 FIX (audit #5): queue drained — done for this session
             summarizeGrantFlow()
             refresh()
             return
@@ -738,10 +771,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Visible error dialog on the UI thread — used for gateway actions so a
-     *  failure can be screenshotted instead of silently killing the app. */
+     *  failure can be screenshotted instead of silently killing the app.
+     *  v1.5.32 FIX (audit #2): if the user backed out while the 35s RPC was
+     *  in flight, showing a dialog on a finished activity threw
+     *  BadTokenException → "app keeps stopping". Guard every show. */
     private fun errorDialog(title: String, e: Exception) {
         log("✘ $title: ${e.message}")
         runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
             AlertDialog.Builder(this)
                 .setTitle(title)
                 .setMessage(e.message ?: "unknown error")
@@ -863,6 +900,10 @@ class MainActivity : AppCompatActivity() {
                 log(if (reused) "✔ gateway connection verified — existing credentials kept: ${res.optString("username")}"
                     else "✔ gateway credentials ${if (rotate) "rotated" else "created"}: ${res.optString("username")}")
                 runOnUiThread {
+                    // v1.5.32 FIX (audit #2): the 35s RPC may outlive the
+                    // activity — showing a dialog on a finished activity
+                    // throws BadTokenException → "app keeps stopping".
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     if (reused) {
                         AlertDialog.Builder(this)
                             .setTitle("Connection verified — nothing changed")
@@ -935,6 +976,8 @@ class MainActivity : AppCompatActivity() {
                 } else "❌ Gateway is OFF\n\nTap \"⚡ Create gateway credentials\" to enable it."
                 log("gateway status: ${if (enabled) "on" else "off"}")
                 runOnUiThread {
+                    // v1.5.32 FIX (audit #2): guard against finished activity
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     AlertDialog.Builder(this)
                         .setTitle("SMS Gateway")
                         .setMessage(msg)
@@ -986,6 +1029,8 @@ class MainActivity : AppCompatActivity() {
                     "Nothing was sent and nothing was changed — this was a read-only check."
                 log("connection test: ok · phone ${if (online) "online" else "offline"}")
                 runOnUiThread {
+                    // v1.5.32 FIX (audit #2): guard against finished activity
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     AlertDialog.Builder(this)
                         .setTitle("⚡ Connection test")
                         .setMessage(msg)
@@ -995,6 +1040,8 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 log("connection test: FAILED — ${e.message}")
                 runOnUiThread {
+                    // v1.5.32 FIX (audit #2): guard against finished activity
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     AlertDialog.Builder(this)
                         .setTitle("❌ Connection test failed")
                         .setMessage("The credentials no longer authenticate.\n\n${e.message}\n\nIf the password was rotated elsewhere, re-create the credentials here (KEEP mode keeps the username and re-binds the device).")

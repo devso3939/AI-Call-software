@@ -11,6 +11,10 @@ out/
 coverage/
 .vitest/
 
+# android build outputs
+apps/android-gateway/app/build/
+apps/android-gateway/.gradle/
+
 # secrets — NEVER commit
 .env
 .env.*

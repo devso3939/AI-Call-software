@@ -209,7 +209,14 @@ object Ui {
 
     /** Cross-fade a section in/out (used when pairing state flips). */
     fun crossfade(show: View, hide: View) {
+        // v1.5.32 FIX (audit #9): two rapid crossfades of the same pair used
+        // to interleave their end-actions (hide stays GONE while show is
+        // GONE too → blank screen). Cancelling pending view animations
+        // before starting keeps the pair's end state consistent.
+        show.animate().cancel()
+        hide.animate().cancel()
         hide.animate().alpha(0f).setDuration(160).withEndAction {
+            if (hide.visibility == View.GONE) return@withEndAction // superseded by a newer crossfade
             hide.visibility = View.GONE
             show.alpha = 0f
             show.visibility = View.VISIBLE

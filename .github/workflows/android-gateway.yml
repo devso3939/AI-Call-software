@@ -99,12 +99,22 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.31 · versionCode 37). Two APKs:
+            build (v1.5.32 · versionCode 38). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.32 highlights — full sandbox test + 12 bug fixes
+            - The whole app was audited and every UI path tested from all sides BEFORE release; both APKs were compiled locally in a real Android build environment (compile + lint + signature verification) before being shipped
+            - FIXED the "popup that won't close": the permission flow re-fired on every app resume after a denial — it now runs once per session, never under the explainer dialog, and survives screen rotation
+            - FIXED "app keeps stopping" crashes: toasts from background threads (Bridge pairing failure), and dialogs shown on a closed screen after the 35-second timeout (gateway setup / status / connection test)
+            - FIXED unstoppable flickering in the Bridge APK: the live status pulse was restarted on every refresh — it now breathes only on state change
+            - FIXED blank-screen risk from rapid section crossfades interleaving; SIM number field no longer fights the cursor while typing
+            - FIXED a launch crash-loop after backup restore / phone clone: if the encrypted storage is corrupted the app now recovers automatically instead of crashing at every start (you may need to re-pair once)
+            - FIXED buttons stuck disabled forever on a stalled connection — every network call now has a hard 45-second cap
+            - No visual redesign in this build — the stable v1.5.28 look is kept exactly
 
             ### v1.5.31 highlights — STABILITY ROLLBACK
             - The v1.5.29/1.5.30 redesign caused crashes, non-stop flickering, stuck dialogs and "app keeps stopping" on some devices
