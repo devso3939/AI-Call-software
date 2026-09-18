@@ -76,7 +76,29 @@ class MainActivity : AppCompatActivity() {
         requestAllPermissions()
     }
 
-    override fun onResume() { super.onResume(); refresh() }
+    // v1.5.33 FIX (audit RANK 2): start/stop are ASYNC — the refresh() right
+    // after a tap still saw the OLD running state, so "Stop bridge" looked
+    // dead right after starting (and vice versa). A 1-second ticker keeps
+    // every button/pill in sync with reality while the screen is open.
+    private val refresher = object : android.os.Handler(android.os.Looper.getMainLooper()) {
+        override fun handleMessage(m: android.os.Message) {
+            if (lifecycleActive) { refresh(); sendEmptyMessageDelayed(0, 1000) }
+        }
+    }
+    private var lifecycleActive = false
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleActive = true
+        refresher.sendEmptyMessage(0)
+        refresh()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        lifecycleActive = false
+        refresher.removeMessages(0)
+    }
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, results: IntArray) {
         super.onRequestPermissionsResult(code, perms, results)
@@ -128,6 +150,16 @@ class MainActivity : AppCompatActivity() {
         }
         startBtn = Ui.button(this, "Start bridge", primary = true) {
             if (!DeviceStore.isPaired(this@MainActivity)) { toast("Pair first"); return@button }
+            // v1.5.33 FIX (audit RANK 3): Start used to silently run without
+            // the mic — the bridge connected but recorded silence. Now it
+            // routes to the permission flow instead of failing invisibly.
+            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                toast("Microphone permission is required to bridge audio — granting…")
+                ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+                return@button
+            }
             BridgeService.start(this@MainActivity)
             refresh()
         }

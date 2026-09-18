@@ -81,6 +81,11 @@ object Ui {
     /**
      * The ONE button style: mint pill (primary) or outlined pill (secondary),
      * ripple feedback, springy press animation.
+     *
+     * v1.5.33 FIX (audit RANK 1): disabled buttons used to look identical to
+     * enabled ones, so tapping them felt like "the button does nothing".
+     * Now every button visibly dims to 40% opacity the moment it is
+     * disabled — the state change is always obvious to the user.
      */
     fun button(
         c: Context,
@@ -88,7 +93,12 @@ object Ui {
         primary: Boolean = true,
         danger: Boolean = false,
         onClick: () -> Unit,
-    ): Button = Button(c).apply {
+    ): Button = object : Button(c) {
+        override fun setEnabled(enabled: Boolean) {
+            super.setEnabled(enabled)
+            alpha = if (enabled) 1f else 0.4f
+        }
+    }.apply {
         text = label
         isAllCaps = false
         textSize = 14f
@@ -194,12 +204,15 @@ object Ui {
     /**
      * Entrance animation: slide up + fade in, staggered by index.
      * Call after adding a view to its parent, passing its child index.
+     * v1.5.33: fades to the view's enabled-aware alpha (0.4 when disabled)
+     * so a disabled button stays visibly dimmed after the entrance.
      */
     fun animateIn(v: View, index: Int = 0) {
+        val target = if (v.isEnabled) 1f else 0.4f
         v.alpha = 0f
         v.translationY = dp(v.context, 12).toFloat()
         v.animate()
-            .alpha(1f)
+            .alpha(target)
             .translationY(0f)
             .setDuration(260L + (index * 40L))
             .setStartDelay((index * 50L))

@@ -1397,7 +1397,34 @@ function gwExample(kind) {
   const P = freshGwPassword ? freshGwPassword.password : '<YOUR_GATEWAY_PASSWORD>';
   const T = '<TOKEN_FROM_LOGIN>';
   const B = 'https://ijrfqjxdajgoaysazxle.supabase.co/rest/v1/rpc';
+  const G = 'https://ijrfqjxdajgoaysazxle.supabase.co/functions/v1/smmsgate';
   const ANON = SUPABASE_ANON_KEY;
+  // v1.5.33 — SMS-Gate-compatible REST endpoint (SmartBookly, n8n, and every
+  // app that works with "SMS Gateway for Android" speaks THIS format: HTTP
+  // Basic auth + JSON. This is now the primary integration path.)
+  if (kind === 'easy-send') return `curl -X POST '${G}/3rdparty/v1/messages' \\
+  -u '${U}:${P}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"textMessage":{"text":"Hello from my service!"},"phoneNumbers":["+995599123456"]}'
+# → 202 {"id":"…","status":"queued","createdAt":"…"} — no apikey header, no token step`;
+  if (kind === 'easy-token') return `curl -X POST '${G}/3rdparty/v1/auth/token' \\
+  -u '${U}:${P}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"ttl":0,"scopes":["send_sms","read_sms"]}'
+# → 201 {"access_token":"ogt_…","token_type":"Bearer","expires_at":null} — permanent until you rotate`;
+  if (kind === 'easy-token-send') return `curl -X POST '${G}/3rdparty/v1/messages' \\
+  -H 'Authorization: Bearer ${T}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"textMessage":{"text":"Hello!"},"phoneNumbers":["+995599123456"]}'`;
+  if (kind === 'easy-apps') return `Works with any app that supports "SMS Gateway for Android" / SMS-Gate:
+
+  Server URL:  ${G}
+  Username:    ${U}
+  Password:    (your gateway password)
+
+In SmartBookly: SMS settings → provider "SMS Gateway (Android)" →
+paste the Server URL above + your username + password → Save.
+It will use HTTP Basic auth automatically — nothing else to configure.`;
   if (kind === 'login') return `curl -X POST '${B}/gateway_api_login' \\
   -H 'apikey: ${ANON}' \\
   -H 'Content-Type: application/json' \\
@@ -2911,19 +2938,31 @@ function tabSmsGateway() {
   <div class="card" style="margin-top:14px">
     <h2>Use it from any service</h2>
     ${!on ? '<div class="empty"><div class="eico">📡</div><div class="etitle">Gateway is off</div><div class="ehint">Enable it above — copy-paste API examples with your credentials filled in will appear here.</div></div>' : `
-    <p class="tiny" style="margin:0 0 6px">Every request is a POST to the OpenCall REST endpoint with the public project <code>apikey</code> header and your gateway credentials in the payload. Works from any language or automation platform. Rate limit: <strong>120 requests/minute</strong>.</p>
-    <label class="label">1 · Log in (optional — get a 24 h token)</label>
-    <button class="copybtn" onclick="copyText(gwExample('login'))">Copy</button>
-    <pre class="code">${esc(gwExample('login'))}</pre>
-    <label class="label">2 · Send an SMS from your SIM</label>
-    <button class="copybtn" onclick="copyText(gwExample('send'))">Copy</button>
-    <pre class="code">${esc(gwExample('send'))}</pre>
-    <label class="label">3 · Check the gateway status</label>
-    <button class="copybtn" onclick="copyText(gwExample('status'))">Copy</button>
-    <pre class="code">${esc(gwExample('status'))}</pre>
-    <label class="label">4 · Read recent messages</label>
-    <button class="copybtn" onclick="copyText(gwExample('getsms'))">Copy</button>
-    <pre class="code">${esc(gwExample('getsms'))}</pre>
+    <p class="tiny" style="margin:0 0 6px">✅ <strong>Easy way (recommended)</strong> — your gateway now speaks the standard <strong>SMS-Gate (Android) API</strong>. Any service that supports "SMS Gateway for Android" — including <strong>SmartBookly</strong> — connects with just a server URL + username + password. HTTP Basic auth, no apikey header, no token step. Rate limit: <strong>120 requests/minute</strong>.</p>
+    <label class="label">1 · Connect SmartBookly (or any SMS-Gate-compatible app)</label>
+    <button class="copybtn" onclick="copyText(gwExample('easy-apps'))">Copy</button>
+    <pre class="code">${esc(gwExample('easy-apps'))}</pre>
+    <label class="label">2 · Send an SMS (one request, Basic auth)</label>
+    <button class="copybtn" onclick="copyText(gwExample('easy-send'))">Copy</button>
+    <pre class="code">${esc(gwExample('easy-send'))}</pre>
+    <label class="label">3 · Optional: get a permanent Bearer token</label>
+    <button class="copybtn" onclick="copyText(gwExample('easy-token'))">Copy</button>
+    <pre class="code">${esc(gwExample('easy-token'))}</pre>
+    <details style="margin-top:10px">
+      <summary class="tiny mint" style="cursor:pointer">Advanced: original OpenCall RPC API (apikey + JSON body)</summary>
+      <label class="label" style="margin-top:8px">Log in (get a never-expiring token)</label>
+      <button class="copybtn" onclick="copyText(gwExample('login'))">Copy</button>
+      <pre class="code">${esc(gwExample('login'))}</pre>
+      <label class="label">Send an SMS</label>
+      <button class="copybtn" onclick="copyText(gwExample('send'))">Copy</button>
+      <pre class="code">${esc(gwExample('send'))}</pre>
+      <label class="label">Check the gateway status</label>
+      <button class="copybtn" onclick="copyText(gwExample('status'))">Copy</button>
+      <pre class="code">${esc(gwExample('status'))}</pre>
+      <label class="label">Read recent messages</label>
+      <button class="copybtn" onclick="copyText(gwExample('getsms'))">Copy</button>
+      <pre class="code">${esc(gwExample('getsms'))}</pre>
+    </details>
     <p class="tiny" style="margin:10px 0 0;color:#fca5a5"><strong>Honest limits:</strong> the password is shown once at setup (only a hash is stored) · sends are routed to the bound phone first · destination must be E.164 (+country…) · body 1–1600 chars · the phone must be online (gateway app running) for sends to queue.</p>`}
   </div>
 

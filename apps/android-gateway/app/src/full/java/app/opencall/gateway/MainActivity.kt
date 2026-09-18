@@ -105,6 +105,20 @@ class MainActivity : AppCompatActivity() {
     private var grantFlowDoneThisSession = false
     private var explainerUp = false
 
+    // v1.5.33 FIX (audit RANK 2): 1-second UI ticker — see onResume comment.
+    private val refresher = object : android.os.Handler(android.os.Looper.getMainLooper()) {
+        override fun handleMessage(m: android.os.Message) {
+            if (lifecycleActive) { refresh(); sendEmptyMessageDelayed(0, 1000) }
+        }
+    }
+    private var lifecycleActive = false
+
+    override fun onPause() {
+        super.onPause()
+        lifecycleActive = false
+        refresher.removeMessages(0)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // v1.5.32 FIX (audit #7): survive rotation — if the grant flow
@@ -148,6 +162,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // v1.5.33 FIX (audit RANK 2): start/stop are ASYNC — the refresh()
+        // right after a tap still saw the OLD running state, so "Stop
+        // gateway" looked dead right after starting (and vice versa). A
+        // 1-second ticker keeps every button/pill in sync with reality
+        // while the screen is open.
+        lifecycleActive = true
+        refresher.sendEmptyMessage(0)
         // 1.5.20 AUTO-START: whenever the app is opened and the phone is
         // paired, make sure the gateway service is running. This is what
         // went wrong today: the service had died (reboot / Android kill),
@@ -1122,7 +1143,11 @@ class MainActivity : AppCompatActivity() {
             hiddenSection.visibility = View.GONE
             targetSection.visibility = View.VISIBLE
         }
-        simInput.setText(DeviceStore.simNumber(this) ?: "")
+        // v1.5.33: only overwrite the SIM field when its content differs —
+        // re-setting the same text every second (new refresher ticker) would
+        // move the cursor and fight the user typing.
+        val simNow = DeviceStore.simNumber(this) ?: ""
+        if (simInput.text.toString() != simNow) simInput.setText(simNow)
         startBtn.isEnabled = paired && !svcRunning
         stopBtn.isEnabled = svcRunning
         unpairBtn.isEnabled = paired
