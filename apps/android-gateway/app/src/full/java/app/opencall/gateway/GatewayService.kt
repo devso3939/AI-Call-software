@@ -265,11 +265,12 @@ class GatewayService : Service() {
 
                 val cmds = Commands.parse(claimed)
                 if (cmds.isEmpty()) {
-                    // Idle: 20 s between polls saves battery; when a call is
-                    // active (or an audio bridge is up) drop to 4 s so dial /
-                    // answer / end commands stay snappy.
-                    val callActive = FullCallService.ringing || FullCallService.active || bridge != null
-                    sleep(if (callActive) 4000 else 20000)
+                    // 1.5.34: trust the server's waitHint — 4 s fast poll so a
+                    // web-dialed call reaches the phone in under 5 s (was 20 s
+                    // idle sleep → browser often hung up before the phone
+                    // even dialed). Legacy servers return a bare array; the
+                    // waitHint helper then defaults to 4 s too.
+                    sleep(Commands.waitHint(claimed))
                     continue
                 }
 
@@ -640,24 +641,35 @@ internal data class Command(val id: String, val kind: String, val payload: JSONO
 
 internal object Commands {
     /**
-     * gateway_fetch_commands returns a jsonb ARRAY of { id, kind, payload }.
-     * PostgREST wraps a single-element scalar as a bare JSON array already;
-     * Rpc.rpc returns element[0] only when the body is a JSON array, which for
-     * a scalar array result is wrong — so handle both shapes.
+     * gateway_fetch_commands response shapes (all supported):
+     *  • legacy: a bare jsonb ARRAY of { id, kind, payload }
+     *  • 1.5.34: an envelope {"cmds":[…], "waitHint":<seconds>} — waitHint is
+     *    the server's advice on how long to sleep before the next poll
+     *    (0 = more commands waiting / poll immediately, 4 = idle fast poll).
+     *    This cut worst-case call-setup latency from 20 s to under 5 s.
      */
     fun parse(raw: Any?): List<Command> {
-        return when (raw) {
-            null -> emptyList()
-            is org.json.JSONArray -> (0 until raw.length()).mapNotNull { i ->
-                val o = raw.optJSONObject(i) ?: return@mapNotNull null
-                Command(o.optString("id"), o.optString("kind"), o.optJSONObject("payload") ?: JSONObject())
+        val arr = when (raw) {
+            null -> return emptyList()
+            is org.json.JSONArray -> raw
+            is JSONObject -> when {
+                raw.has("cmds") -> raw.optJSONArray("cmds") ?: return emptyList()
+                raw.has("id")   -> return listOf(
+                    Command(raw.optString("id"), raw.optString("kind"), raw.optJSONObject("payload") ?: JSONObject()))
+                else -> return emptyList()
             }
-            is JSONObject -> {
-                if (raw.has("id")) listOf(
-                    Command(raw.optString("id"), raw.optString("kind"), raw.optJSONObject("payload") ?: JSONObject())
-                ) else emptyList()
-            }
-            else -> emptyList()
+            else -> return emptyList()
         }
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            Command(o.optString("id"), o.optString("kind"), o.optJSONObject("payload") ?: JSONObject())
+        }
+    }
+
+    /** Server-advised sleep before next poll; 4 s default when absent (legacy server). */
+    fun waitHint(raw: Any?): Long {
+        val o = raw as? JSONObject ?: return 4000L
+        val h = o.optLong("waitHint", -1L)
+        return if (h in 0..60) h * 1000L else 4000L
     }
 }

@@ -1542,9 +1542,13 @@ async function placeGatewayCall(e164) {
   ringTimeout = setTimeout(async () => {
     if (call.phase !== 'active') {
       try { await sb.rpc('queue_end_call', { p_call_id: call.callId }); } catch (e) {}
-      endCallLocal(isBridge ? 'tap-to-dial not used within 90 s' : 'no answer after 45 s');
+      // 1.5.34: gateway calls need the phone to poll (≤5 s) + dial + answer
+      // — 45 s was too tight when the phone was on a slow network; 90 s
+      // matches the bridge flavor and still ends honestly if the phone
+      // never picks up.
+      endCallLocal(isBridge ? 'tap-to-dial not used within 90 s' : 'no answer after 90 s — check the phone app is running and online');
     }
-  }, (isBridge ? 90 : RING_TIMEOUT_S) * 1000);
+  }, 90 * 1000);
   await startMedia('caller');   // offer waits in calls_events until the phone joins the bridge
 }
 
@@ -2150,6 +2154,11 @@ async function startMedia(role) {
      was "running on the phone". Now the user is told exactly what happened.
      Only for gateway calls (internet/PSTN connect differently). */
   if (call.isGateway && typeof bridgeWatchdog !== 'number') {
+    // 1.5.34: the watchdog now fires at 40 s (was 18 s) — the phone may
+    // still be dialing/answering during the first half minute, and the old
+    // 18 s "audio bridge failed" toast fired while the call was still
+    // legitimately setting up. 40 s is past the 90 s ring timeout only for
+    // genuinely broken bridges; still early enough to be useful.
     bridgeWatchdog = setTimeout(() => {
       bridgeWatchdog = null;
       if (!pc || call.phase === 'idle') return;
@@ -2162,7 +2171,7 @@ async function startMedia(role) {
         renderApp();
         showToast('⚠ Audio bridge failed — call audio is NOT in this browser', 'err');
       }
-    }, 18000);
+    }, 40000);
   }
   pc.onicecandidate = (e) => {
     // non-trickle main path: candidates ride inside offer/answer SDP.
