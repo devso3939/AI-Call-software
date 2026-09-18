@@ -83,7 +83,7 @@
     <h2>Install OpenCall on Android</h2>
     <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.30 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.31 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
       <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
@@ -114,6 +114,10 @@
   </div>
 
   <div class="sec">
+    <h3>🟢 What's new in v1.5.31</h3>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.31 — stability rollback:</strong> the v1.5.29/1.5.30 redesign made the app unusable on some devices (crashes, non-stop flickering, a permission popup that wouldn't close, "app keeps stopping"). This build <strong>restores the exact UI code from v1.5.28 — the last version that ran perfectly</strong> — with all v1.5.28 features intact: Test connection, Connection Health, copy-friendly credentials, permanent badge. If Android refuses to update over the broken build, uninstall it first — your pairing is preserved either way. The visual redesign will be retried later, carefully, only after it's proven stable.</p>
+    </div>
     <h3>🟢 What's new in v1.5.30</h3>
     <div class="ok" style="margin-bottom:10px">
       <p><strong>v1.5.30 — stability + performance fixes:</strong> the v1.5.29 redesign had three real bugs that made the app unusable on some phones — a <strong>partly black screen</strong> (the radial-glow background glitched on some GPUs), <strong>lag</strong> (that same full-screen background forced the whole window to redraw on every animation frame), and <strong>constant blinking</strong> (the status pill pulsed infinitely and restarted on every refresh). All three are fixed: the canvas is now a clean vertical gradient that renders identically on every device, and the status pill does a single gentle breath only when the state actually changes. Also fixed a <strong>launch crash in the Bridge APK</strong>. The whole redesign is kept — gradient buttons, hero header, one-tap copy chips, step chips, tinted toasts. Install over the previous build — no re-pairing needed.</p>

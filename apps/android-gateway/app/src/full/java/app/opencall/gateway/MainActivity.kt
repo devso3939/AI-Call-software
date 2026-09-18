@@ -75,10 +75,6 @@ class MainActivity : AppCompatActivity() {
     // username/password that third-party services (e.g. SmartBookly) use
     // to send SMS through this SIM via the cloud API.
     private lateinit var gwText: TextView
-    private lateinit var gwChips: LinearLayout
-    // 1.5.29 — rebuilds the copy-chips only when credentials actually change,
-    // so refresh() doesn't flicker the chips on every onResume().
-    private var gwChipKey: String = ""
     private lateinit var gwUserInput: EditText
     private lateinit var gwCreateBtn: Button
     private lateinit var gwRotateBtn: Button
@@ -102,9 +98,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 1.5.29 — web-app canvas: deep navy + soft mint/cyan radial glows.
+        // 1.5.26 — deep navy canvas behind everything (matches the web app).
         window.setBackgroundDrawableResource(android.R.color.transparent)
-        window.decorView.background = Ui.canvas(this)
+        window.decorView.setBackgroundColor(Ui.BG)
         buildUi()
         // 1.5.25 — don't fire a stack of permission dialogs before the user
         // has read a single word about what this app does. First launch shows
@@ -411,7 +407,7 @@ class MainActivity : AppCompatActivity() {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = Ui.card(this@MainActivity)
-            val t = Ui.dp(this@MainActivity, 14)
+            val t = Ui.dp(this@MainActivity, 6)
             setPadding(t, t, t, t)
         }
         if (title != null) card.addView(Ui.cardTitle(this, title, pad / 2, big = true))
@@ -426,51 +422,26 @@ class MainActivity : AppCompatActivity() {
     private fun buildUi() {
         val pad = Ui.dp(this, 16)
 
-        // 1.5.29 — HERO header, modeled on the web app's brand block:
-        // gradient logo tile + product name + version line, then the live
-        // breathing status pill on its own row.
-        val heroRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(pad, Ui.dp(this@MainActivity, 20), pad, 0)
-        }
-        val logo = TextView(this).apply {
-            text = "📞"
-            textSize = 17f
-            gravity = Gravity.CENTER
-            val tile = Ui.gradPill(this@MainActivity, intArrayOf(Ui.MINT_DEEP, Ui.CYAN), radiusDp = 12)
-            background = tile
-            val ts = Ui.dp(this@MainActivity, 42)
-            layoutParams = LinearLayout.LayoutParams(ts, ts)
-            elevation = Ui.dp(this@MainActivity, 6).toFloat()
-            outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
-        }
-        val heroTitles = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(Ui.dp(this@MainActivity, 12), 0, 0, 0)
-        }
+        // 1.5.26 — status header: app name + version line, then a live
+        // status pill (RUNNING / stopped) that breathes while the service
+        // is up. The long multi-line dump moved into the paired card below.
         statusText = TextView(this).apply {
-            textSize = 19f
+            setPadding(pad, pad, pad, Ui.dp(this@MainActivity, 8))
+            textSize = 20f
             setTypeface(typeface, Typeface.BOLD)
-            letterSpacing = -0.02f
             setTextColor(Ui.INK)
             text = "OpenCall Gateway"
-            setPadding(0, 0, 0, Ui.dp(this@MainActivity, 2))
         }
         statusSub = TextView(this).apply {
-            textSize = 12f
-            setTextColor(Ui.INK_FAINT)
+            setPadding(pad, 0, pad, Ui.dp(this@MainActivity, 12))
+            textSize = 13f
+            setTextColor(Ui.INK_DIM)
         }
-        heroTitles.addView(statusText)
-        heroTitles.addView(statusSub)
-        heroRow.addView(logo)
-        heroRow.addView(heroTitles, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-
         statusPill = Ui.statusDot(this, false)
         val pillRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(pad, Ui.dp(this@MainActivity, 14), pad, Ui.dp(this@MainActivity, 16))
+            setPadding(pad, 0, pad, Ui.dp(this@MainActivity, 12))
         }
         pillRow.addView(statusPill)
 
@@ -515,10 +486,11 @@ class MainActivity : AppCompatActivity() {
         bgCard.addView(bgOverlayBtn)
         bgCard.addView(agentToggle)
 
-        // 1.5.29 — gateway card, rebuilt to match the web SMS Gateway tab:
-        // health dot + status line up top, one-tap COPY CHIPS for username
-        // and password (tap → clipboard → toast), a "permanent" chip, then
-        // the actions in a clear order: create → show → test → rotate.
+        // 1.5.17: SMS Gateway credentials card — 1.5.21 UI/UX: bigger title,
+        // status line first, single clear primary action.
+        // 1.5.26 — the standalone gwTitle header was folded into the card
+        // title (cardOf already renders "📡 SMS Gateway…"); the old
+        // multi-line status dump is now the compact infoCardBody.
         gwText = TextView(this).apply {
             textSize = 13f
             setTextColor(Ui.INK)
@@ -528,10 +500,6 @@ class MainActivity : AppCompatActivity() {
             textSize = 12f
             setTextColor(Ui.INK_DIM)
             setPadding(pad, 4, pad, 4)
-        }
-        gwChips = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
         }
         gwUserInput = Ui.input(this, "Choose a username (e.g. smartbookly)", android.text.InputType.TYPE_CLASS_TEXT)
         gwCreateBtn = Ui.button(this, "⚡ Create gateway credentials", primary = true) { doGatewaySetup() }
@@ -603,26 +571,17 @@ class MainActivity : AppCompatActivity() {
         // 1.5.26 — each section's content is grouped into rounded cards and
         // the whole section cross-fades when pairing state flips.
         setupSection = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        // 1.5.29 — scannable step chips instead of a dense paragraph: the
-        // web app's stepchip pattern, so connecting takes one glance.
-        val stepsBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        listOf(
-            "Open the web app → Devices tab",
-            "Tap Create pairing code",
-            "Type the 6 digits here",
-        ).forEachIndexed { i, step ->
-            stepsBox.addView(Ui.chip(this, step, mark = "${i + 1}"))
-            if (i < 2) stepsBox.addView(View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(1, Ui.dp(this@MainActivity, 6))
-            })
-        }
-        stepsBox.setPadding(pad, Ui.dp(this@MainActivity, 4), pad, Ui.dp(this@MainActivity, 8))
         setupSection.addView(
             cardOf(
                 "Setup",
                 codeInput,
                 pairBtn,
-                stepsBox,
+                TextView(this@MainActivity).apply {
+                    text = "How it works: open the web app → Devices tab → Create pairing code → type it here. After pairing you'll set your SIM number and grant permissions."
+                    textSize = 12f
+                    setTextColor(Ui.INK_DIM)
+                    setPadding(pad, Ui.dp(this@MainActivity, 4), pad, pad)
+                },
                 installHelpBtn,
             ),
         )
@@ -636,12 +595,11 @@ class MainActivity : AppCompatActivity() {
             cardOf(
                 "📡 SMS Gateway (for other apps/services)",
                 gwText,
-                gwChips,
                 gwUserInput,
                 gwCreateBtn,
+                gwRotateBtn,
                 gwStatusBtn,
                 gwTestBtn,
-                gwRotateBtn,
                 simInput,
                 simBtn,
                 startBtn,
@@ -656,7 +614,8 @@ class MainActivity : AppCompatActivity() {
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(0, 0, 0, Ui.dp(this@MainActivity, 24))
-                addView(heroRow)
+                addView(statusText)
+                addView(statusSub)
                 addView(pillRow)
                 addView(setupSection)
                 addView(pairedSection)
@@ -776,21 +735,6 @@ class MainActivity : AppCompatActivity() {
     // every toast through the UI thread so it is safe from anywhere.
     private fun toast(msg: String) = runOnUiThread {
         Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-    }
-
-    // 1.5.29 — one-tap copy for the gateway credentials chips. Puts the value
-    // on the clipboard and confirms with the tinted toast so the user knows
-    // exactly which credential is now ready to paste.
-    private fun copyToClipboard(label: String, value: String) {
-        try {
-            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            cm.setPrimaryClip(android.content.ClipData.newPlainText(label, value))
-            Ui.toast(this, "✔ $label copied — paste it into the service", ok = true)
-            log("✔ $label copied to clipboard")
-        } catch (e: Exception) {
-            log("✘ copy failed: ${e.message}")
-            toast("Couldn't copy — long-press the value to copy manually")
-        }
     }
 
     /** Visible error dialog on the UI thread — used for gateway actions so a
@@ -1091,8 +1035,6 @@ class MainActivity : AppCompatActivity() {
         statusPill.text = pillText
         statusPill.background = Ui.statusDot(this, svcRunning).background
         statusPill.setTextColor(if (svcRunning) 0xFFB7F5DF.toInt() else 0xFFFCA5A5.toInt())
-        // v1.5.30 FIX — pulse only on a real state change, never on every
-        // refresh (the infinite re-pulse was the "blinking").
         if (prevPillText != pillText) {
             // state change: pop the pill so the transition is noticeable
             if (!reducedMotion()) {
@@ -1104,6 +1046,8 @@ class MainActivity : AppCompatActivity() {
                 statusPill.startAnimation(pop)
             }
             if (svcRunning) Ui.pulse(statusPill) else Ui.stopPulse(statusPill)
+        } else if (svcRunning && statusPill.animation == null) {
+            Ui.pulse(statusPill)
         }
 
         // 1.5.26 — the old multi-line dump becomes a compact status card body.
@@ -1137,48 +1081,16 @@ class MainActivity : AppCompatActivity() {
         unpairBtn.isEnabled = paired
 
         // 1.5.17 — gateway card only makes sense once paired (1.5.21: clearer copy)
-        // 1.5.29 — web-style health line + one-tap copy chips (web .copychip):
-        // the whole connect flow is now "tap username chip → tap password chip
-        // → paste into SmartBookly".
         val gwEnabled = paired && !DeviceStore.gatewayUsername(this).isNullOrBlank()
         gwText.text = if (!paired) {
             "1️⃣ Pair this phone first (type the 6-digit code below).\n2️⃣ Then create gateway credentials here."
         } else if (gwEnabled) {
-            "✅ Gateway ON — paste the credentials below into the service that sends SMS (e.g. SmartBookly)."
+            "✅ Gateway ON — username: ${DeviceStore.gatewayUsername(this)}\n" +
+                "Tap \"📋 Show my credentials\" to see the username + password to paste into SmartBookly.\n" +
+                "Not sure it still works? \"⚡ Test connection\" proves it in one tap — without sending anything."
         } else {
             "Create a username here → we generate a strong password → paste both into the service that will send SMS (e.g. SmartBookly)."
         }
-
-        // rebuild copy chips only when the username changed (cheap guard so
-        // refresh() can run on every resume without flicker)
-        val chipKey = "${DeviceStore.gatewayUsername(this) ?: ""}|${DeviceStore.gatewayPassword(this) != null}"
-        if (chipKey != gwChipKey) {
-            gwChipKey = chipKey
-            gwChips.removeAllViews()
-            val u = DeviceStore.gatewayUsername(this)
-            if (paired && !u.isNullOrBlank()) {
-                val p = DeviceStore.gatewayPassword(this)
-                val pad16 = Ui.dp(this, 16)
-                gwChips.addView(Ui.copyChip(this, "username", u) { copyToClipboard("gateway username", u) })
-                if (p != null) {
-                    gwChips.addView(View(this).apply {
-                        layoutParams = LinearLayout.LayoutParams(1, Ui.dp(this@MainActivity, 6))
-                    })
-                    gwChips.addView(Ui.copyChip(this, "password", p) { copyToClipboard("gateway password", p) })
-                }
-                gwChips.addView(View(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(1, Ui.dp(this@MainActivity, 8))
-                })
-                val chipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                chipRow.addView(Ui.chip(this, "permanent — never expires"))
-                gwChips.addView(chipRow)
-                gwChips.setPadding(pad16, Ui.dp(this@MainActivity, 8), pad16, 0)
-                gwChips.visibility = View.VISIBLE
-            } else {
-                gwChips.visibility = View.GONE
-            }
-        }
-
         gwUserInput.visibility = if (paired) View.VISIBLE else View.GONE
         gwCreateBtn.isEnabled = paired
         gwRotateBtn.isEnabled = paired && gwEnabled // rotate only makes sense with existing creds

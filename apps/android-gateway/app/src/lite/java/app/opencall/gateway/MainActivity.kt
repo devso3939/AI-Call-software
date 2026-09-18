@@ -70,10 +70,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 1.5.29 — web-app canvas: deep navy + soft mint/cyan radial glows
-        // (matches the GATEWAY flavor and the web app's body background).
-        window.setBackgroundDrawableResource(android.R.color.transparent)
-        window.decorView.background = Ui.canvas(this)
+        // 1.5.26 — deep navy canvas behind everything (matches the web app).
+        window.decorView.setBackgroundColor(Ui.BG)
         buildUi()
         requestAllPermissions()
     }
@@ -94,52 +92,25 @@ class MainActivity : AppCompatActivity() {
     private fun buildUi() {
         val pad = Ui.dp(this, 16)
 
-        // 1.5.29 — hero header: gradient logo tile + product name + live
-        // status pill, same pattern as the GATEWAY flavor and the web app's
-        // brand block.
-        val heroRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(pad, Ui.dp(this@MainActivity, 20), pad, 0)
-        }
-        val logo = TextView(this).apply {
-            text = "🌉"
-            textSize = 17f
-            gravity = Gravity.CENTER
-            background = Ui.gradPill(this@MainActivity, intArrayOf(Ui.MINT_DEEP, Ui.CYAN), radiusDp = 12)
-            val ts = Ui.dp(this@MainActivity, 42)
-            layoutParams = LinearLayout.LayoutParams(ts, ts)
-            elevation = Ui.dp(this@MainActivity, 6).toFloat()
-            outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
-        }
-        val heroTitles = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(Ui.dp(this@MainActivity, 12), 0, 0, 0)
-        }
+        // 1.5.26 — header + live status pill, same design language as the
+        // GATEWAY flavor (shared Ui.kt).
         statusText = TextView(this).apply {
-            textSize = 19f
+            setPadding(pad, pad, pad, Ui.dp(this@MainActivity, 8))
+            textSize = 20f
             setTypeface(typeface, Typeface.BOLD)
-            letterSpacing = -0.02f
             setTextColor(Ui.INK)
             text = "OpenCall Bridge"
-            setPadding(0, 0, 0, Ui.dp(this@MainActivity, 2))
         }
         statusSub = TextView(this).apply {
-            textSize = 12f
-            setTextColor(Ui.INK_FAINT)
+            setPadding(pad, 0, pad, Ui.dp(this@MainActivity, 12))
+            textSize = 13f
+            setTextColor(Ui.INK_DIM)
         }
-        heroTitles.addView(statusText)
-        heroTitles.addView(statusSub)
-        heroRow.addView(logo)
-        heroRow.addView(
-            heroTitles,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
-        )
         statusPill = Ui.statusDot(this, false)
         val pillRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(pad, Ui.dp(this@MainActivity, 14), pad, Ui.dp(this@MainActivity, 16))
+            setPadding(pad, 0, pad, Ui.dp(this@MainActivity, 12))
         }
         pillRow.addView(statusPill)
 
@@ -187,7 +158,8 @@ class MainActivity : AppCompatActivity() {
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(0, 0, 0, Ui.dp(this@MainActivity, 24))
-                addView(heroRow)
+                addView(statusText)
+                addView(statusSub)
                 addView(pillRow)
                 addView(cardOf("Setup", codeInput, pairBtn, simInput, simBtn))
                 addView(spacer())
@@ -216,7 +188,7 @@ class MainActivity : AppCompatActivity() {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = Ui.card(this@MainActivity)
-            val t = Ui.dp(this@MainActivity, 14)
+            val t = Ui.dp(this@MainActivity, 6)
             setPadding(t, t, t, t)
         }
         card.addView(Ui.cardTitle(this, title, Ui.dp(this, 8), big = true))
@@ -257,10 +229,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 1.5.29 — tinted toast (custom view) + safe from background threads.
-    private fun toast(msg: String) = runOnUiThread {
-        Ui.toast(this, msg, ok = true)
-    }
+    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
 
     // ============ actions ============
 
@@ -319,10 +288,8 @@ class MainActivity : AppCompatActivity() {
                 Animation.RELATIVE_TO_SELF, 0.5f,
             ).apply { duration = 220 }
             statusPill.startAnimation(pop)
-            // v1.5.30 FIX — one-shot breath on state change only (the
-            // per-refresh re-pulse was the "blinking").
-            if (svcRunning) Ui.pulse(statusPill) else Ui.stopPulse(statusPill)
         }
+        if (svcRunning) Ui.pulse(statusPill) else Ui.stopPulse(statusPill)
 
         // compact status body (was the old multi-line dump)
         val sim = DeviceStore.simNumber(this)
