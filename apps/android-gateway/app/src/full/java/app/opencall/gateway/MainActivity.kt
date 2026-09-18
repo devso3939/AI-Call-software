@@ -1091,6 +1091,8 @@ class MainActivity : AppCompatActivity() {
         statusPill.text = pillText
         statusPill.background = Ui.statusDot(this, svcRunning).background
         statusPill.setTextColor(if (svcRunning) 0xFFB7F5DF.toInt() else 0xFFFCA5A5.toInt())
+        // v1.5.30 FIX — pulse only on a real state change, never on every
+        // refresh (the infinite re-pulse was the "blinking").
         if (prevPillText != pillText) {
             // state change: pop the pill so the transition is noticeable
             if (!reducedMotion()) {
@@ -1102,8 +1104,6 @@ class MainActivity : AppCompatActivity() {
                 statusPill.startAnimation(pop)
             }
             if (svcRunning) Ui.pulse(statusPill) else Ui.stopPulse(statusPill)
-        } else if (svcRunning && statusPill.animation == null) {
-            Ui.pulse(statusPill)
         }
 
         // 1.5.26 — the old multi-line dump becomes a compact status card body.

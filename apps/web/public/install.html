@@ -83,7 +83,7 @@
     <h2>Install OpenCall on Android</h2>
     <p><strong style="color:#fcd34d">OpenCall Gateway (recommended)</strong> — everything happens <strong style="color:var(--text)">automatically in the background on your SIM</strong>: calls dial themselves, SMS sends itself, incoming calls answer themselves. No taps, no notifications to click. <strong style="color:var(--mint400)">OpenCall Bridge</strong> is the fallback if you don't want to grant SMS/Phone permissions (it asks you to tap a notification instead — Android forbids anything else without those permissions).</p>
     <div class="badges">
-      <span class="badge">✓ v1.5.29 · Android 8.0+</span>
+      <span class="badge">✓ v1.5.30 · Android 8.0+</span>
       <span class="badge">✓ Signed release builds</span>
       <span class="badge">🟡 Gateway: automatic dial + SMS via SIM</span>
       <span class="badge">🟢 Bridge: no permissions, tap-to-handoff</span>
@@ -114,6 +114,10 @@
   </div>
 
   <div class="sec">
+    <h3>🟢 What's new in v1.5.30</h3>
+    <div class="ok" style="margin-bottom:10px">
+      <p><strong>v1.5.30 — stability + performance fixes:</strong> the v1.5.29 redesign had three real bugs that made the app unusable on some phones — a <strong>partly black screen</strong> (the radial-glow background glitched on some GPUs), <strong>lag</strong> (that same full-screen background forced the whole window to redraw on every animation frame), and <strong>constant blinking</strong> (the status pill pulsed infinitely and restarted on every refresh). All three are fixed: the canvas is now a clean vertical gradient that renders identically on every device, and the status pill does a single gentle breath only when the state actually changes. Also fixed a <strong>launch crash in the Bridge APK</strong>. The whole redesign is kept — gradient buttons, hero header, one-tap copy chips, step chips, tinted toasts. Install over the previous build — no re-pairing needed.</p>
+    </div>
     <h3>🟢 What's new in v1.5.29</h3>
     <div class="ok" style="margin-bottom:10px">
       <p><strong>v1.5.29 — the app now LOOKS like the web app:</strong> both APKs got a full redesign using the web app's exact design language — deep-navy canvas with soft mint/cyan/violet radial glows, translucent 18dp cards with hairline strokes, mint→cyan <strong>gradient primary buttons</strong> with a glow shadow, and a hero header (gradient logo tile + product name + live status pill). Every button presses down and <strong>springs back with overshoot</strong> — the web's spring curve. Connecting is effortless: the gateway username and password appear as <strong>one-tap copy chips</strong> right in the app (tap → clipboard → confirmation toast) with a "✓ permanent — never expires" badge beside them, and the pairing flow is now three <strong>numbered step chips</strong> instead of a dense paragraph. Tinted toasts (mint success / red error), staggered card entrances, sliding log lines, and a mint focus ring on inputs complete the look — all respecting your system "reduce motion" setting. Install over the previous build — no re-pairing needed.</p>

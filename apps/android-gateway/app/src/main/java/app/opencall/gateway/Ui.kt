@@ -63,38 +63,18 @@ object Ui {
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), c.resources.displayMetrics).toInt()
 
     /**
-     * Web-app canvas: deep navy base + soft mint/cyan radial glows at the
-     * top and a faint violet one at the bottom (the exact background stack
-     * from the web app's body, ported as a LayerDrawable of radials).
+     * App canvas — v1.5.30 FIX. The v1.5.29 version layered three huge
+     * RADIAL gradients as the window background: (a) some GPUs render the
+     * transparent-alpha radial path as BLACK ovals (the "partly black
+     * screen"), and (b) a full-screen gradient background forces the whole
+     * window to redraw on every animation frame (the lag). One vertical
+     * LINEAR gradient is a single GPU pass and cannot glitch.
      */
-    fun canvas(c: Context): android.graphics.drawable.Drawable {
-        // radial glow = OVAL shape + RADIAL_GRADIENT type (GradientDrawable
-        // has no "RADIAL" shape constant — the gradient TYPE carries it).
-        fun glow(sizeDp: Int, color: Int): GradientDrawable = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setGradientType(GradientDrawable.RADIAL_GRADIENT)
-            setColors(intArrayOf(color, 0x00000000))
-            gradientRadius = dp(c, sizeDp).toFloat()
-        }
-        val mintGlow = glow(420, 0x2410B981.toInt())   // rgba(16,185,129,.14)
-        val cyanGlow = glow(420, 0x1A22D3EE.toInt())   // rgba(34,211,238,.10)
-        val violetGlow = glow(380, 0x14A78BFA.toInt()) // rgba(167,139,250,.08)
-        return LayerDrawable(arrayOf(mintGlow, cyanGlow, violetGlow)).apply {
-            setId(0, 1); setId(1, 2); setId(2, 3)
-            // mint glow: bleeding off the top-left corner
-            setLayerSize(0, dp(c, 420), dp(c, 420))
-            setLayerGravity(0, Gravity.TOP or Gravity.START)
-            setLayerInsetRelative(0, -dp(c, 120), -dp(c, 180), 0, 0)
-            // cyan glow: bleeding off the top-right corner
-            setLayerSize(1, dp(c, 420), dp(c, 420))
-            setLayerGravity(1, Gravity.TOP or Gravity.END)
-            setLayerInsetRelative(1, 0, -dp(c, 180), -dp(c, 120), 0)
-            // violet glow: soft, low center
-            setLayerSize(2, dp(c, 380), dp(c, 380))
-            setLayerGravity(2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-            setLayerInsetRelative(2, 0, dp(c, 160), 0, -dp(c, 120))
-        }
-    }
+    fun canvas(c: Context): android.graphics.drawable.Drawable =
+        GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(0xFF0B1526.toInt(), 0xFF070B14.toInt()),
+        )
 
     // ---- spring motion (the web --spring curve, as an interpolator) ----
     fun spring(): OvershootInterpolator = OvershootInterpolator(1.6f)
@@ -387,19 +367,21 @@ object Ui {
     }
 
     /**
-     * Pulsing "live" dot: 1s scale pulse, infinite. Attach to a small View
-     * (or a TextView with a bullet) to make "RUNNING" feel alive.
+     * "Live" feedback — v1.5.30 FIX. The old version pulsed INFINITELY,
+     * which (combined with the full-screen gradient background) kept the
+     * whole window redrawing forever → visible blinking + lag. Now it's a
+     * single gentle 1→1.06→1 breath that runs ONCE on state change.
      */
     fun pulse(v: View) {
-        v.animate().setDuration(0).start() // reset
+        v.clearAnimation()
         val anim = ScaleAnimation(
-            1f, 1.25f, 1f, 1.25f,
+            1f, 1.06f, 1f, 1.06f,
             Animation.RELATIVE_TO_SELF, 0.5f,
             Animation.RELATIVE_TO_SELF, 0.5f,
         ).apply {
-            duration = 900
+            duration = 450
             repeatMode = Animation.REVERSE
-            repeatCount = Animation.INFINITE
+            repeatCount = 1
             interpolator = DecelerateInterpolator()
         }
         v.startAnimation(anim)

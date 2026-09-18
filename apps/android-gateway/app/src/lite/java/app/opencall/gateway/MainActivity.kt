@@ -188,7 +188,6 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(0, 0, 0, Ui.dp(this@MainActivity, 24))
                 addView(heroRow)
-                addView(statusSub)
                 addView(pillRow)
                 addView(cardOf("Setup", codeInput, pairBtn, simInput, simBtn))
                 addView(spacer())
@@ -320,8 +319,10 @@ class MainActivity : AppCompatActivity() {
                 Animation.RELATIVE_TO_SELF, 0.5f,
             ).apply { duration = 220 }
             statusPill.startAnimation(pop)
+            // v1.5.30 FIX — one-shot breath on state change only (the
+            // per-refresh re-pulse was the "blinking").
+            if (svcRunning) Ui.pulse(statusPill) else Ui.stopPulse(statusPill)
         }
-        if (svcRunning) Ui.pulse(statusPill) else Ui.stopPulse(statusPill)
 
         // compact status body (was the old multi-line dump)
         val sim = DeviceStore.simNumber(this)

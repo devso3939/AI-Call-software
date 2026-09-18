@@ -99,12 +99,19 @@ jobs:
           name: OpenCall — latest APKs
           body: |
             **Always up to date.** This release is replaced automatically on every
-            build (v1.5.29 · versionCode 35). Two APKs:
+            build (v1.5.30 · versionCode 36). Two APKs:
 
             | APK | Package | What it does | Play Protect |
             |---|---|---|---|
             | `opencall-bridge.apk` | `app.opencall.bridge` | Internet calling (microphone bridge) — joins call rooms like the web app | ✅ **Installs clean — no sensitive permissions, no warning** |
             | `opencall-gateway.apk` | `app.opencall.gateway2` | FULL gateway: SMS relay in/out + dial/answer SIM calls + audio bridge + **web-side call controls (mute/speaker/hold/DTMF via Telecom InCallService)** | ⚠️ May show the sensitive-data warning until the developer identity is registered (see below) |
+
+            ### v1.5.30 highlights — stability + performance fixes
+            - FIXED: partly black screen — the v1.5.29 radial-glow canvas glitched on some GPUs; replaced with a clean vertical gradient that renders identically everywhere
+            - FIXED: lag — the full-screen gradient background no longer forces whole-window redraws on every animation frame
+            - FIXED: blinking — the status pill pulsed infinitely and re-pulsed on every refresh; now a single gentle breath on state change only
+            - FIXED: Bridge (lite) APK launch crash — a view was attached to two parents at startup
+            - All redesign features kept: gradient buttons, hero header, copy chips, step chips, tinted toasts
 
             ### v1.5.29 highlights — the app now LOOKS like the web app
             - Full redesign of both APKs using the web app's exact design language: deep-navy canvas with soft mint/cyan/violet radial glows, translucent 18dp cards with hairline strokes
