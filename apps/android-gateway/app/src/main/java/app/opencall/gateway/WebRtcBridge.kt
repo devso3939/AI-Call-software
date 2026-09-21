@@ -287,7 +287,9 @@ class WebRtcBridge(
                         // let FAILED fire minutes later; now we watchdog it so
                         // a dead link is restarted promptly instead of hanging.
                         failTimer?.let { h -> mainHandler.removeCallbacks(h); failTimer = null }
-                        failTimer = mainHandler.postDelayed({ attemptRestart("link unstable") }, 8000)
+                        val r = Runnable { attemptRestart("link unstable") }
+                        failTimer = r
+                        mainHandler.postDelayed(r, 8000)
                     }
                     PeerConnection.PeerConnectionState.FAILED -> {
                         // 1.5.35 — FAILED is no longer "irrevocable". Restart
