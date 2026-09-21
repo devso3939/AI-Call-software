@@ -81,8 +81,17 @@ class WebRtcBridge(
                 val mac = Mac.getInstance("HmacSHA1")
                 mac.init(SecretKeySpec(TURN_SECRET.toByteArray(), "HmacSHA1"))
                 val credential = Base64.encodeToString(mac.doFinal(user.toByteArray()), Base64.NO_WRAP)
+                // 1.5.35 TURN PARITY: live probing showed the relay answers on
+                // UDP 3478 and UDP 80 but its TCP ports are unreliable — and
+                // UDP 3478 (the standard TURN port, the most reliable path)
+                // was missing entirely. Order matters: ICE tries candidates
+                // roughly in the order the servers are listed.
                 listOf(
+                    PeerConnection.IceServer.builder("turn:$TURN_HOST:3478?transport=udp")
+                        .setUsername(user).setPassword(credential).createIceServer(),
                     PeerConnection.IceServer.builder("turn:$TURN_HOST:80?transport=udp")
+                        .setUsername(user).setPassword(credential).createIceServer(),
+                    PeerConnection.IceServer.builder("turn:$TURN_HOST:3478?transport=tcp")
                         .setUsername(user).setPassword(credential).createIceServer(),
                     PeerConnection.IceServer.builder("turn:$TURN_HOST:80?transport=tcp")
                         .setUsername(user).setPassword(credential).createIceServer(),
@@ -128,6 +137,51 @@ class WebRtcBridge(
     /** 1.5.12b — re-pins the speaker route every 2 s while the bridge is live. */
     private var routeKeeper: Thread? = null
     @Volatile private var closed: Boolean = false
+
+    // 1.5.35 — ICE self-heal state
+    private var restartTries = 0
+    private var failTimer: Runnable? = null
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /**
+     * 1.5.35 ICE self-heal: FAILED/DISCONNECTED no longer kills the bridge.
+     * We re-offer (iceRestart) via the durable signal channel; the browser's
+     * handleSignal('offer') answers renegotiations mid-call. After 2 failed
+     * restarts the bridge is declared gone (onGone) so the web UI can be
+     * honest instead of showing a mute call forever.
+     */
+    private fun attemptRestart(why: String) {
+        val conn = pc ?: return
+        if (closed) return
+        if (restartTries >= 2) {
+            Log.w(TAG, "bridge gone after $restartTries restart attempts ($why)")
+            failTimer?.let { mainHandler.removeCallbacks(it); failTimer = null }
+            try { onGone?.invoke() } catch (_: Exception) {}
+            return
+        }
+        restartTries++
+        Log.w(TAG, "ICE restart #$restartTries ($why)")
+        try { conn.restartIce() } catch (_: Exception) {}
+        if (!isOfferer) {
+            // We are the ANSWERER (outbound flow) — the browser owns offers.
+            // It will notice its own failure/disconnect and re-offer; our
+            // onOffer() handles renegotiation. Nothing to do here.
+            return
+        }
+        // We are the OFFERER (inbound flow) — build and post a restart offer.
+        conn.createOffer(object : SdpObserverLog("restartOffer") {
+            override fun onCreateSuccess(desc: SessionDescription?) {
+                val c = pc ?: return
+                val d = desc ?: return
+                c.setLocalDescription(SdpObserverLog("setLocal(restart)"), d)
+                postSignal("offer", JSONObject()
+                    .put("type", "offer")
+                    .put("sdp", d.description))
+                Log.i(TAG, "restart offer posted (${d.description.length} B SDP)")
+            }
+            override fun onCreateFailure(p0: String?) { Log.e(TAG, "restart createOffer failed: $p0") }
+        }, MediaConstraints())
+    }
 
     /** AUDIT FIX: now nullable — close() releases it, ensureFactory() recreates
      *  it (start() calls close() first, so a reused bridge instance must be able
@@ -178,6 +232,8 @@ class WebRtcBridge(
         this.sigSeq = DeviceStore.sigSeq(ctx, callId)
         this.closed = false
         this.isOfferer = offer
+        this.restartTries = 0   // 1.5.35 — fresh call, fresh restart budget
+        this.failTimer = null
 
         ensureFactory()
 
@@ -220,16 +276,27 @@ class WebRtcBridge(
             override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) {
                 Log.i(TAG, "connection state → $newState")
                 when (newState) {
-                    PeerConnection.PeerConnectionState.CONNECTED ->
+                    PeerConnection.PeerConnectionState.CONNECTED -> {
                         // audio path live — the honest "call is active" signal
+                        restartTries = 0
+                        failTimer?.let { h -> mainHandler.removeCallbacks(h); failTimer = null }
                         try { onConnected?.invoke() } catch (_: Exception) {}
-                    PeerConnection.PeerConnectionState.FAILED ->
-                        // ICE gave up for good — report failure upward
-                        try { onGone?.invoke() } catch (_: Exception) {}
-                    else -> {
-                        // DISCONNECTED can be transient (ICE restart) — browser
-                        // signals 'bye' if it gives up; do nothing here.
                     }
+                    PeerConnection.PeerConnectionState.DISCONNECTED -> {
+                        // 1.5.35 — transient by nature. Old code ignored it and
+                        // let FAILED fire minutes later; now we watchdog it so
+                        // a dead link is restarted promptly instead of hanging.
+                        failTimer?.let { h -> mainHandler.removeCallbacks(h); failTimer = null }
+                        failTimer = mainHandler.postDelayed({ attemptRestart("link unstable") }, 8000)
+                    }
+                    PeerConnection.PeerConnectionState.FAILED -> {
+                        // 1.5.35 — FAILED is no longer "irrevocable". Restart
+                        // ICE up to 2 times (the browser answers re-offers via
+                        // handleSignal('offer') → renegotiation); only report
+                        // gone after the last attempt also fails.
+                        attemptRestart("ICE failed")
+                    }
+                    else -> {}
                 }
             }
             override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState) {
@@ -461,6 +528,10 @@ class WebRtcBridge(
         // re-pin the speaker after we've released it.
         try { routeKeeper?.interrupt() } catch (_: Exception) {}
         routeKeeper = null
+        // 1.5.35 — stop any pending restart watchdog
+        failTimer?.let { mainHandler.removeCallbacks(it) }
+        failTimer = null
+        restartTries = 0
         AudioRoute.speakerOff(ctx)
         // 1.5.10a — bridge gone: if the cellular call is still active the
         // mask copy reverts to the handset wording (no-op on lite flavor).

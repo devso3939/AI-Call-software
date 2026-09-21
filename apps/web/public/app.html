@@ -1397,7 +1397,7 @@ function gwExample(kind) {
   const P = freshGwPassword ? freshGwPassword.password : '<YOUR_GATEWAY_PASSWORD>';
   const T = '<TOKEN_FROM_LOGIN>';
   const B = 'https://ijrfqjxdajgoaysazxle.supabase.co/rest/v1/rpc';
-  const G = 'https://ijrfqjxdajgoaysazxle.supabase.co/functions/v1/smmsgate';
+  const G = 'https://mrueqpffzauvdxmuwhfa.supabase.co/functions/v1/smmsgate';
   const ANON = SUPABASE_ANON_KEY;
   // v1.5.33 — SMS-Gate-compatible REST endpoint (SmartBookly, n8n, and every
   // app that works with "SMS Gateway for Android" speaks THIS format: HTTP
@@ -2025,6 +2025,8 @@ async function hangup() {
 function endCallLocal(reason) {
   clearTimeout(ringTimeout); ringTimeout = null;
   if (bridgeWatchdog) { clearTimeout(bridgeWatchdog); bridgeWatchdog = null; }
+  if (connLostTimer) { clearTimeout(connLostTimer); connLostTimer = null; }   // 1.5.35
+  iceRestartTries = 0;                                                        // 1.5.35
   clearInterval(statsTimer); statsTimer = null;
   stopEventPoll();
   stopRing();
@@ -2078,8 +2080,14 @@ async function buildRtcConfig() {
   const iceServers = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
   try {
     const c = await getTurnCreds();
+    /* 1.5.35 BRIDGE-RELIABILITY FIX: live probing showed the Open Relay
+       answers TURN Allocate on UDP 3478 and UDP 80 but its TCP ports are
+       unreliable — and the old config was missing UDP 3478 (the standard
+       TURN port, the most reliable path of all) entirely. Order matters:
+       ICE tries candidates roughly in the order the servers are listed. */
     iceServers.push(
-      { urls: ['turn:standard.relay.metered.ca:80?transport=udp', 'turn:standard.relay.metered.ca:80?transport=tcp'], username: c.username, credential: c.credential },
+      { urls: ['turn:standard.relay.metered.ca:3478?transport=udp', 'turn:standard.relay.metered.ca:80?transport=udp'], username: c.username, credential: c.credential },
+      { urls: ['turn:standard.relay.metered.ca:3478?transport=tcp', 'turn:standard.relay.metered.ca:80?transport=tcp'], username: c.username, credential: c.credential },
       { urls: 'turns:standard.relay.metered.ca:443?transport=tcp', username: c.username, credential: c.credential },
     );
   } catch {}
@@ -2088,6 +2096,29 @@ async function buildRtcConfig() {
 // AUDIT FIX: removed dead RTC_CONFIG — every RTCPeerConnection uses
 // buildRtcConfig() (TURN creds fetched fresh from the server). The old
 // STUN-only constant was never referenced.
+
+/* 1.5.35 — ICE self-heal: restart the session instead of killing the call.
+   The phone's WebRtcBridge.onOffer() answers re-offers mid-call (setRemote →
+   createAnswer), so an ICE restart renegotiates cleanly in both dial
+   directions. Two attempts, then honest failure. */
+let connLostTimer = null;
+let iceRestartTries = 0;
+function tryIceRestart(why) {
+  if (!pc || call.phase !== 'active') return;
+  if (iceRestartTries >= 2) { endCallLocal('audio link lost'); return; }
+  iceRestartTries++;
+  call.stateNote = `reconnecting audio (${iceRestartTries}/2) — ${why}`;
+  renderApp();
+  try { pc.restartIce(); } catch {}
+  (async () => {
+    try {
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
+      await waitIceGather(pc);
+      await sendSignal('offer', pc.localDescription);
+    } catch {}
+  })();
+}
 
 /* mic acquisition with an honest timeout: a hung device must not stall the call forever */
 function getMic(ms = 15000) {
@@ -2143,22 +2174,62 @@ async function startMedia(role) {
     // 1.5.14: live far-end meter + autoplay rescue
     farMeterStart();
   };
+  /* 1.5.35 CALL-DEATH FIX — the old handler tore the ENTIRE call down on
+     ANY 'disconnected' or 'failed'. But 'disconnected' is routinely
+     TRANSIENT (a few seconds of network jitter; ICE re-probes and
+     recovers), and 'failed' can be restarted with an ICE restart. That
+     handler was the exact cause of "the call ends by itself after
+     30-40 s": the first network blip killed the call mid-conversation.
+     Now: disconnected → 6 s grace (auto-clears when ICE recovers);
+     failed → up to 2 ICE restarts (the phone answers re-offers, so
+     renegotiation works in both dial directions); only a genuinely dead
+     session after all retries ends the call. */
   pc.onconnectionstatechange = () => {
-    if (pc && ['failed','disconnected','closed'].includes(pc.connectionState) && call.phase === 'active') {
-      endCallLocal('connection lost');
+    if (!pc || call.phase !== 'active') return;
+    const st = pc.connectionState;
+    if (st === 'connected') {
+      if (connLostTimer) { clearTimeout(connLostTimer); connLostTimer = null; }
+      iceRestartTries = 0;
+      /* 1.5.35 NO-BUTTONS FIX: the full call panel (mute / speaker / hold /
+         keypad) only renders in phase 'active' — but the web only entered
+         'active' when the PHONE's telecom layer reported "answered". If the
+         InCallService isn't bound (no default-dialer grant) that report never
+         arrives, so the web sat in the buttonless "Dialing…" popup for the
+         whole call. The bridge CONNECTING is itself proof the call is live:
+         flip to active the moment audio flows, regardless of what the phone
+         reports. */
+      if (call.phase === 'dialing' || call.phase === 'ringing') {
+        call.phase = 'active';
+        call.startedAt = Date.now();
+        clearTimeout(ringTimeout); ringTimeout = null;
+        relaxEventPoll();
+        renderApp();   // swap the "Dialing…" popup for the full call panel
+      }
+      if (call.stateNote && (call.stateNote.includes('reconnect') || call.stateNote.includes('audio bridge'))) {
+        call.stateNote = ''; renderApp();
+      }
+      return;
     }
+    if (st === 'disconnected') {
+      if (connLostTimer) return;                       // grace already running
+      connLostTimer = setTimeout(() => { connLostTimer = null; tryIceRestart('audio link unstable'); }, 6000);
+      return;
+    }
+    if (st === 'failed') {
+      tryIceRestart('audio link failed');
+      return;
+    }
+    // 'closed' — we closed the pc ourselves; nothing to recover
   };
   /* 1.5.11 BRIDGE WATCHDOG — honest feedback when the audio bridge never
      connects. Previously ICE failed silently: the browser stayed mute, the
      phone's speaker+mic carried the whole call, and it looked like the call
      was "running on the phone". Now the user is told exactly what happened.
-     Only for gateway calls (internet/PSTN connect differently). */
+     Only for gateway calls (internet/PSTN connect differently).
+     1.5.35: with the TURN + ICE-restart fixes the bridge connects far more
+     reliably, so the watchdog is now the LAST RESORT (60 s) — and if ICE is
+     mid-restart it stays quiet instead of crying wolf during a recovery. */
   if (call.isGateway && typeof bridgeWatchdog !== 'number') {
-    // 1.5.34: the watchdog now fires at 40 s (was 18 s) — the phone may
-    // still be dialing/answering during the first half minute, and the old
-    // 18 s "audio bridge failed" toast fired while the call was still
-    // legitimately setting up. 40 s is past the 90 s ring timeout only for
-    // genuinely broken bridges; still early enough to be useful.
     bridgeWatchdog = setTimeout(() => {
       bridgeWatchdog = null;
       if (!pc || call.phase === 'idle') return;
@@ -2167,11 +2238,17 @@ async function startMedia(role) {
         call.stateNote = 'audio bridge still connecting — check that the phone shows "call running from your computer", and that both devices have internet';
         renderApp();
       } else if (pc.connectionState === 'new' || pc.connectionState === 'failed') {
-        call.stateNote = 'audio bridge did not connect — the call is on your phone only. End it and retry; both devices need working internet.';
-        renderApp();
-        showToast('⚠ Audio bridge failed — call audio is NOT in this browser', 'err');
+        // give the ICE-restart logic one shot before declaring defeat
+        tryIceRestart('bridge never connected');
+        setTimeout(() => {
+          if (!pc || call.phase === 'idle') return;
+          if (pc.connectionState === 'connected') return;
+          call.stateNote = 'audio bridge did not connect — the call is on your phone only. End it and retry; both devices need working internet.';
+          renderApp();
+          showToast('⚠ Audio bridge failed — call audio is NOT in this browser', 'err');
+        }, 12000);
       }
-    }, 40000);
+    }, 60000);
   }
   pc.onicecandidate = (e) => {
     // non-trickle main path: candidates ride inside offer/answer SDP.
