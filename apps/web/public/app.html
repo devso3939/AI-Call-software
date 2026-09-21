@@ -2055,40 +2055,38 @@ function endCallLocal(reason) {
    the WebRTC bridge never connects → the browser gets no audio, the phone's
    speaker+mic carry the whole call and the stock dialer pops up. Adding a
    TURN relay (always connects regardless of NAT) makes the bridge work and
-   keeps the call fully web-controlled. Credentials are the public Open Relay
-   static-auth pair (coturn REST scheme: username = expiry epoch,
-   credential = base64(hmac-sha1(secret, username))), computed right here. */
-const OPENRELAY_SECRET = 'openrelayprojectsecret';
-async function hmacSha1B64(secret, msg) {
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg));
-  return btoa(String.fromCharCode(...new Uint8Array(sig)));
-}
+   keeps the call fully web-controlled.
+   1.5.36 REGRESSION-TEST FIX: live probing showed the Open Relay
+   (standard.relay.metered.ca) no longer answers on ANY port — UDP 3478/80
+   dead, TCP dead, turns dead. The whole relay is gone. Switched to
+   Cloudflare's free TURN (turn.cloudflare.com) with short-lived REST
+   credentials (verified live: relay candidates gather on UDP 3478,
+   TCP 3478 AND turns 5349). NOTE: speed.cloudflare.com/turn-creds returns
+   403 to browser requests (Origin header) — it has NO CORS headers — so
+   the web fetches creds through our turncreds Edge Function proxy, which
+   fetches server-side (no Origin header → 200) and adds CORS. */
 let turnCredsPromise = null;
 function getTurnCreds() {
-  // cache for the session; derived with a 1 h expiry, safe to reuse per call
-  if (!turnCredsPromise) {
-    turnCredsPromise = (async () => {
-      const user = String(Math.floor(Date.now() / 1000) + 3600);
-      const credential = await hmacSha1B64(OPENRELAY_SECRET, user);
-      return { username: user, credential };
-    })();
-  }
-  return turnCredsPromise;
+  // Cloudflare REST creds are short-lived; refetch per call, cache 30 min
+  if (turnCredsPromise && Date.now() - turnCredsPromise.at < 30 * 60 * 1000) return turnCredsPromise.p;
+  const p = (async () => {
+    const r = await fetch('https://mrueqpffzauvdxmuwhfa.supabase.co/functions/v1/turncreds');
+    if (!r.ok) throw new Error('turn-creds ' + r.status);
+    return await r.json();
+  })();
+  turnCredsPromise = { at: Date.now(), p };
+  return p;
 }
 async function buildRtcConfig() {
   const iceServers = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
   try {
     const c = await getTurnCreds();
-    /* 1.5.35 BRIDGE-RELIABILITY FIX: live probing showed the Open Relay
-       answers TURN Allocate on UDP 3478 and UDP 80 but its TCP ports are
-       unreliable — and the old config was missing UDP 3478 (the standard
-       TURN port, the most reliable path of all) entirely. Order matters:
-       ICE tries candidates roughly in the order the servers are listed. */
+    /* 1.5.36: Cloudflare TURN — all three transports live-verified gathering
+       relay candidates. UDP first (fastest), then TCP, then TLS. */
     iceServers.push(
-      { urls: ['turn:standard.relay.metered.ca:3478?transport=udp', 'turn:standard.relay.metered.ca:80?transport=udp'], username: c.username, credential: c.credential },
-      { urls: ['turn:standard.relay.metered.ca:3478?transport=tcp', 'turn:standard.relay.metered.ca:80?transport=tcp'], username: c.username, credential: c.credential },
-      { urls: 'turns:standard.relay.metered.ca:443?transport=tcp', username: c.username, credential: c.credential },
+      { urls: 'turn:turn.cloudflare.com:3478?transport=udp', username: c.username, credential: c.credential },
+      { urls: 'turn:turn.cloudflare.com:3478?transport=tcp', username: c.username, credential: c.credential },
+      { urls: 'turns:turn.cloudflare.com:5349?transport=tcp', username: c.username, credential: c.credential },
     );
   } catch {}
   return { iceServers, iceCandidatePoolSize: 4 };

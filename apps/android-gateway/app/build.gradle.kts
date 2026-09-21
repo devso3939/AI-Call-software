@@ -11,8 +11,8 @@ android {
         applicationId = "app.opencall.gateway2"
         minSdk = 26
         targetSdk = 35
-        versionCode = 41
-        versionName = "1.5.35"
+        versionCode = 42
+        versionName = "1.5.36"
         resourceConfigurations += listOf("en")
     }
 
@@ -105,4 +105,6 @@ dependencies {
     // prebuilt Google libwebrtc (org.webrtc.* namespace), maintained artifact
     implementation("io.getstream:stream-webrtc-android:1.3.8")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // 1.5.36: kotlinx-coroutines for withContext(Dispatchers.IO) in WebRtcBridge
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }

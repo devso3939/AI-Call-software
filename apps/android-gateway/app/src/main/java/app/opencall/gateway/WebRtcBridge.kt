@@ -2,8 +2,8 @@ package app.opencall.gateway
 
 import android.content.Context
 import android.media.AudioManager
-import android.util.Base64
 import android.util.Log
+import app.opencall.gateway.Rpc.SUPABASE_URL
 import org.json.JSONObject
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
@@ -21,8 +21,10 @@ import org.webrtc.SessionDescription
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * WebRTC audio bridge between this phone and the browser (or AI) user.
@@ -63,45 +65,75 @@ class WebRtcBridge(
         private const val STUN = "stun:stun.l.google.com:19302"
         private const val STUN2 = "stun:stun1.l.google.com:19302"
 
-        /** 1.5.11 — public Open Relay TURN static-auth secret (coturn REST scheme). */
-        private const val TURN_HOST = "standard.relay.metered.ca"
-        private const val TURN_SECRET = "openrelayprojectsecret"
+        /**
+         * 1.5.36 — Cloudflare free TURN (Open Relay is dead: live probing
+         * showed standard.relay.metered.ca answers on no port at all).
+         * turn.cloudflare.com accepts short-lived REST credentials minted by
+         * speed.cloudflare.com/turn-creds (the phone fetches them per call —
+         * no static secret needed). All three transports verified live.
+         */
+        private const val CF_TURN_CREDS_URL = "https://speed.cloudflare.com/turn-creds"
 
         /**
          * 1.5.11 CALL-FLOW FIX: STUN-only ICE fails on symmetric NAT (mobile
          * data, most home routers) → the bridge never connects → the whole
          * call runs on the phone's speaker/mic and the browser is mute. A
          * TURN relay always connects, so the browser now receives/sends the
-         * audio and controls the call. Credentials follow the coturn REST
-         * scheme: username = expiry epoch, credential = base64(hmac-sha1(secret, username)).
+         * audio and controls the call. 1.5.36: credentials come from the
+         * Cloudflare REST endpoint (username/credential JSON), fetched fresh
+         * per call; on fetch failure we degrade to STUN-only.
          */
-        private fun turnIceServers(): List<PeerConnection.IceServer> {
-            return try {
-                val user = (System.currentTimeMillis() / 1000L + 3600L).toString()
-                val mac = Mac.getInstance("HmacSHA1")
-                mac.init(SecretKeySpec(TURN_SECRET.toByteArray(), "HmacSHA1"))
-                val credential = Base64.encodeToString(mac.doFinal(user.toByteArray()), Base64.NO_WRAP)
-                // 1.5.35 TURN PARITY: live probing showed the relay answers on
-                // UDP 3478 and UDP 80 but its TCP ports are unreliable — and
-                // UDP 3478 (the standard TURN port, the most reliable path)
-                // was missing entirely. Order matters: ICE tries candidates
-                // roughly in the order the servers are listed.
-                listOf(
-                    PeerConnection.IceServer.builder("turn:$TURN_HOST:3478?transport=udp")
-                        .setUsername(user).setPassword(credential).createIceServer(),
-                    PeerConnection.IceServer.builder("turn:$TURN_HOST:80?transport=udp")
-                        .setUsername(user).setPassword(credential).createIceServer(),
-                    PeerConnection.IceServer.builder("turn:$TURN_HOST:3478?transport=tcp")
-                        .setUsername(user).setPassword(credential).createIceServer(),
-                    PeerConnection.IceServer.builder("turn:$TURN_HOST:80?transport=tcp")
-                        .setUsername(user).setPassword(credential).createIceServer(),
-                    PeerConnection.IceServer.builder("turns:$TURN_HOST:443?transport=tcp")
-                        .setUsername(user).setPassword(credential).createIceServer(),
-                )
-            } catch (e: Exception) {
-                Log.w(TAG, "TURN credential derivation failed, STUN-only: ${e.message}")
-                emptyList()
+        private suspend fun turnIceServers(): List<PeerConnection.IceServer> {
+            // Primary: Cloudflare directly (with speed-test page headers).
+            // Fallback: our turncreds Edge Function proxy (same headers not
+            // needed — the proxy adds them server-side). Either path yields
+            // the same {username, credential} JSON.
+            val urls = listOf(
+                CF_TURN_CREDS_URL,
+                "$SUPABASE_URL/functions/v1/turncreds",
+            )
+            for (u in urls) {
+                try {
+                    return withContext(Dispatchers.IO) { fetchTurnServers(u) }
+                } catch (e: Exception) {
+                    Log.w(TAG, "TURN creds fetch failed ($u): ${e.message}")
+                }
             }
+            Log.w(TAG, "all TURN creds sources failed — STUN-only")
+            return emptyList()
+        }
+
+        private fun fetchTurnServers(u: String): List<PeerConnection.IceServer> {
+            val url = URL(u)
+            val isProxy = u.contains("supabase.co")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 6000
+                readTimeout = 6000
+                requestMethod = "GET"
+                if (!isProxy) {
+                    // 1.5.36 regression fix: Cloudflare's turn-creds only
+                    // answers 200 when the request mimics their own
+                    // speed-test page (same-site Origin+Referer+browser
+                    // UA). A bare GET gets 403 — verified live.
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("Origin", "https://speed.cloudflare.com")
+                    setRequestProperty("Referer", "https://speed.cloudflare.com/")
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
+                }
+            }
+            val body = conn.inputStream.use { it.readBytes() }.toString(Charsets.UTF_8)
+            conn.disconnect()
+            val json = JSONObject(body)
+            val user = json.getString("username")
+            val credential = json.getString("credential")
+            return listOf(
+                PeerConnection.IceServer.builder("turn:turn.cloudflare.com:3478?transport=udp")
+                    .setUsername(user).setPassword(credential).createIceServer(),
+                PeerConnection.IceServer.builder("turn:turn.cloudflare.com:3478?transport=tcp")
+                    .setUsername(user).setPassword(credential).createIceServer(),
+                PeerConnection.IceServer.builder("turns:turn.cloudflare.com:5349?transport=tcp")
+                    .setUsername(user).setPassword(credential).createIceServer(),
+            )
         }
 
         /**
@@ -237,12 +269,19 @@ class WebRtcBridge(
 
         ensureFactory()
 
+        // 1.5.36: TURN creds come from a network fetch (Cloudflare REST) —
+        // must not block the calling (main) thread, so resolve them on IO
+        // first, then build the config. On failure turnIceServers() returns
+        // emptyList() and we degrade to STUN-only (same as pre-1.5.11).
+        val turnServers = java.util.concurrent.CompletableFuture
+            .supplyAsync { kotlinx.coroutines.runBlocking { turnIceServers() } }
+            .get(10, java.util.concurrent.TimeUnit.SECONDS)
         // 1.5.11: STUN + TURN relay — see turnIceServers() doc. ICE now always
         // finds a working path, so the bridge (browser audio) actually connects.
         val iceServers = mutableListOf(
             PeerConnection.IceServer.builder(STUN).createIceServer(),
             PeerConnection.IceServer.builder(STUN2).createIceServer(),
-        ).also { it.addAll(turnIceServers()) }
+        ).also { it.addAll(turnServers) }
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
         }
