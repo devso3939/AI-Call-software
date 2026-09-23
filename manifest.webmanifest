@@ -1,0 +1,22 @@
+{
+  "name": "OpenCall AI — real calls & SMS",
+  "short_name": "OpenCall",
+  "description": "Internet calls, SMS and a cellular gateway powered by your own Android phone. Honest routing, no per-minute fees.",
+  "id": "/app.html",
+  "start_url": "/AI-Call-software/app.html",
+  "scope": "/AI-Call-software/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070b14",
+  "theme_color": "#070b14",
+  "categories": ["communication", "utilities"],
+  "icons": [
+    { "src": "/AI-Call-software/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/AI-Call-software/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/AI-Call-software/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Dialer", "url": "/AI-Call-software/app.html#dialer", "icons": [{ "src": "/AI-Call-software/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Messages", "url": "/AI-Call-software/app.html#sms", "icons": [{ "src": "/AI-Call-software/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
