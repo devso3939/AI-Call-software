@@ -465,22 +465,30 @@ internal data class BridgeCommand(val id: String, val kind: String, val payload:
 
 internal object BridgeCommands {
     /**
-     * gateway_fetch_commands returns a jsonb ARRAY of { id, kind, payload }.
-     * Handle both JSONArray (set-returning) and single-object (scalar) shapes.
+     * gateway_fetch_commands returns either
+     *  • legacy: a bare jsonb ARRAY of { id, kind, payload }, or
+     *  • 026/1.5.37: an envelope {"cmds":[…], "waitHint":<seconds>}.
+     * REGRESSION FIX: the lite parser only handled the legacy shapes — an
+     * envelope object has neither "id" nor is an array, so parse() returned an
+     * empty list and every command to a lite/bridge phone sat claimed-but-never-
+     * executed. Now unwraps the envelope exactly like the full flavor does.
      */
     fun parse(raw: Any?): List<BridgeCommand> {
-        return when (raw) {
-            null -> emptyList()
-            is JSONArray -> (0 until raw.length()).mapNotNull { i ->
-                val o = raw.optJSONObject(i) ?: return@mapNotNull null
-                BridgeCommand(o.optString("id"), o.optString("kind"), o.optJSONObject("payload") ?: JSONObject())
-            }
-            is JSONObject -> {
-                if (raw.has("id")) listOf(
+        val arr = when (raw) {
+            null -> return emptyList()
+            is JSONArray -> raw
+            is JSONObject -> when {
+                raw.has("cmds") -> raw.optJSONArray("cmds") ?: return emptyList()
+                raw.has("id")   -> return listOf(
                     BridgeCommand(raw.optString("id"), raw.optString("kind"), raw.optJSONObject("payload") ?: JSONObject())
-                ) else emptyList()
+                )
+                else -> return emptyList()
             }
-            else -> emptyList()
+            else -> return emptyList()
+        }
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            BridgeCommand(o.optString("id"), o.optString("kind"), o.optJSONObject("payload") ?: JSONObject())
         }
     }
 }

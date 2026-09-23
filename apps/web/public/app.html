@@ -1033,7 +1033,9 @@ function uiTick() {
     for (const d of gatewayDevices) {
       const el = document.querySelector(`[data-lasts="${d.id}"]`);
       if (!el || !d.last_seen_at) continue;
-      const isLive = deviceFresh(d, Date.now() - 120000);
+      // 1.5.37 SYNC FIX: 90 s everywhere (was 120 s here — same desync bug
+      // that refreshDevices() had; server times phones out at 90 s).
+      const isLive = deviceFresh(d, Date.now() - 90000);
       el.textContent = isLive ? `last seen ${relTime(d.last_seen_at)}` : `last seen ${relTime(d.last_seen_at)} — not responding`;
     }
   }
@@ -1339,7 +1341,9 @@ async function setupSmsGw(e) {
   // even when exactly one paired phone existed.
   if (!gwDeviceSel) {
     const bound = smsGw && smsGw.deviceId;
-    const online = (gatewayDevices || []).filter(d => d.online && d.last_seen_at && (Date.now() - new Date(d.last_seen_at).getTime()) < 120000);
+    // 1.5.37 SYNC FIX: 90 s freshness (was 120 s) — aligned with the server's
+    // 90 s heartbeat timeout so every surface agrees on "online".
+    const online = (gatewayDevices || []).filter(d => d.online && d.last_seen_at && (Date.now() - new Date(d.last_seen_at).getTime()) < 90000);
     if (bound) gwDeviceSel = bound;
     else if (online.length === 1) gwDeviceSel = online[0].id;
     else if ((gatewayDevices || []).length === 1) gwDeviceSel = gatewayDevices[0].id;
@@ -2733,7 +2737,8 @@ function tabDevices() {
         ? `<div class="tiny" style="color:#a7f3d0;margin-top:4px">✅ Calls run from your browser — the phone dials and bridges audio automatically; a call mask keeps it silent during calls.</div>`
         : '';
       // STALE-DEVICE FIX: judge liveness by heartbeat freshness, not the raw DB flag
-      const isLive = deviceFresh(d, Date.now() - 120000);
+      // 1.5.37 SYNC FIX: 90 s (was 120 s) — same alignment as above.
+      const isLive = deviceFresh(d, Date.now() - 90000);
       // 1.5.13 — SETUP-STATE WARNINGS from the phone's heartbeat:
       //  • flavor "bridge" (lite APK) → calls can't run fully in the background
       //  • overlay=false → the stock dialer WILL pop up on the phone during calls
