@@ -1146,8 +1146,13 @@ class MainActivity : AppCompatActivity() {
         // v1.5.33: only overwrite the SIM field when its content differs —
         // re-setting the same text every second (new refresher ticker) would
         // move the cursor and fight the user typing.
+        // 1.5.37 BUGFIX: that check alone was not enough — while the user was
+        // TYPING a new number (not yet saved), the field text legitimately
+        // differed from the stored value, so the 1-second ticker kept wiping
+        // it back to the old value ("number disappears before I can save").
+        // Never touch the field while it has focus; sync only when idle.
         val simNow = DeviceStore.simNumber(this) ?: ""
-        if (simInput.text.toString() != simNow) simInput.setText(simNow)
+        if (!simInput.hasFocus() && simInput.text.toString() != simNow) simInput.setText(simNow)
         startBtn.isEnabled = paired && !svcRunning
         stopBtn.isEnabled = svcRunning
         unpairBtn.isEnabled = paired

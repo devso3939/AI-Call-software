@@ -350,7 +350,11 @@ class MainActivity : AppCompatActivity() {
         // v1.5.32 FIX (audit #11): only overwrite the SIM field when its
         // content actually differs — re-setting the same text on every
         // refresh() used to move the cursor and fight the user typing.
-        if (simInput.text.toString() != (sim ?: "")) simInput.setText(sim ?: "")
+        // 1.5.37 BUGFIX: while the user was TYPING a new number (not yet
+        // saved) the field legitimately differed from the stored value, so
+        // the ticker kept wiping it back ("number disappears before I can
+        // save"). Never touch the field while it has focus.
+        if (!simInput.hasFocus() && simInput.text.toString() != (sim ?: "")) simInput.setText(sim ?: "")
         simInput.hint = if (paired) "Your SIM number (e.g. +995599123456)" else "Pair first, then set your SIM number"
         simBtn.isEnabled = paired
         startBtn.isEnabled = paired && !svcRunning
