@@ -1176,8 +1176,13 @@ async function refreshDevices() {
     const nextVis = next.map(vis);
     const prevVis = gatewayDevices.map(vis);
     if (!visEq(nextVis, prevVis)) { gatewayDevices = next; }
-    // compute effective online with heartbeat-freshness (see deviceFresh below)
-    const cutoff = Date.now() - 120000;
+    // compute effective online with heartbeat-freshness (see deviceFresh below).
+    // 1.5.37 SYNC FIX: the server times a phone out after 90 s of silence
+    // (gateway_heartbeat comment) — the web used a 2-minute cutoff, so the
+    // browser kept showing "online" up to a minute AFTER the APK had already
+    // flipped to offline (the "web and app show different pictures" bug).
+    // Aligned to 90 s so both sides agree.
+    const cutoff = Date.now() - 90000;
     const online = next.filter(d => deviceFresh(d, cutoff));
     // STICKY PICK: prefer the device we already chose as long as it stays online —
     // with 2+ paired devices each heartbeat would otherwise rotate "newest
@@ -2301,7 +2306,8 @@ function snap(v) { try { return JSON.stringify(v); } catch { return String(v); }
 /* STALE-DEVICE FIX: the DB `online` flag only flips false on a clean unregister.
    If the app is deleted / killed / phone is off, the row stays online=true forever.
    A device counts as ONLINE only when the DB flag is true AND the heartbeat is
-   fresh (≤ 2 min). Everything else is rendered honestly as offline. */
+   fresh (≤ 90 s — matches the server's 90 s heartbeat timeout AND the phone
+   app's own online/offline logic, so web and APK always agree). */
 function deviceFresh(d, cutoffMs) {
   const seen = d.last_seen_at ? new Date(d.last_seen_at).getTime() : 0;
   return !!d.online && seen > cutoffMs;
@@ -2364,6 +2370,12 @@ async function sweep() {
   if (document.hidden) return;
   await sb.rpc('sweep_no_answer', { p_older_than_seconds: RING_TIMEOUT_S }).then(() => {}, () => {});
   if (call.phase === 'idle' && !incoming) refreshHistory();
+  // 1.5.37 SYNC FIX: the gateway device list used to refresh ONLY on
+  // realtime events — if the realtime socket silently dropped (sleep/wake,
+  // flaky Wi-Fi), the web showed a stale online/offline picture forever
+  // while the APK showed the truth. A periodic re-poll keeps both sides
+  // synchronized no matter what happens to the socket.
+  refreshDevices();
 }
 
 /* ---------------- guest links ---------------- */
